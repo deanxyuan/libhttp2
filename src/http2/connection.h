@@ -4,37 +4,50 @@
 #include <map>
 #include <mutex>
 
-#include "http2/http2.h"
-
 #include "src/hpack/send_record.h"
 #include "src/hpack/dynamic_metadata.h"
 #include "src/http2/frame.h"
 #include "src/http2/settings.h"
 #include "src/utils/slice_buffer.h"
 
-class ConnectionFlowControl;
-class http2_response;
+#include "http2/transport.h"
+
 class http2_stream;
 class http2_connection {
 public:
-    static constexpr char PREFACE[] = "PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n";
+    // "PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n"
+    static const uint8_t PREFACE[24];
     static constexpr int PREFACE_SIZE = 24;
     static constexpr int INITIAL_WINDOW_SIZE = 4 * 1024 * 1024;
     static constexpr int MAX_FRAME_SIZE = 4 * 1024 * 1024;
     static constexpr int MAX_HEADER_LIST_SIZE = 8192;
     static constexpr int GRPC_ALLOW_TRUE_BINARY_METADATA = 1;
 
-    http2_connection(http2::TcpSendService *sender, uint64_t cid, bool client_side);
+    http2_connection(http2::SendService *sender, http2::EventHandler *handler, uint64_t cid, bool client_side);
     ~http2_connection();
 
     uint64_t connection_id() const;
+    bool is_client_side() const;
+
     std::shared_ptr<http2_stream> find_stream(uint32_t stream_id);
 
     // for server side use
     bool need_verify_preface();
     void verify_preface_done();
 
-    void send_goaway(uint32_t error_code, uint32_t last_stream_id = 0);
+    void send_ping(uint64_t info);
+    void send_settings(const std::vector<std::pair<uint16_t, uint32_t>> &settings);
+    void send_priority(uint32_t stream_id, uint8_t weight, uint32_t depend_stream_id = 0);
+    void send_rst_stream(uint32_t stream_id, uint32_t error_code);
+
+    void send_goaway(uint32_t error_code, uint32_t last_stream_id = 0, const std::string &debug = std::string());
+    void send_window_update(uint32_t stream_id, uint32_t window_update_size);
+
+    bool send_request(http2::Request *request);
+    bool send_response(http2::Response *response);
+
+    uint32_t send_push_promise(std::vector<std::pair<std::string, std::string>> *initlize_headers);
+
     int package_process(const uint8_t *data, uint32_t len);
     // void async_send_response(std::shared_ptr<http2_response> rsp);
 
@@ -42,10 +55,10 @@ public:
         return _local_settings[HTTP2_SETTINGS_MAX_FRAME_SIZE];
     }
 
-private:
     // if fail return 0
     uint32_t create_stream();
 
+private:
     void received_data(std::shared_ptr<http2_stream> &stream, http2_frame_data *frame);
     void received_header(std::shared_ptr<http2_stream> &stream, http2_frame_headers *frame);
     void received_priority(std::shared_ptr<http2_stream> &stream, http2_frame_priority *frame);
@@ -84,7 +97,9 @@ private:
 
 private:
     hpack::dynamic_metadata_table _dynamic_table;
-    http2::TcpSendService *_sender_service;
+    http2::SendService *_sender_service;
+    http2::EventHandler *_event_handler;
+
     uint64_t _connection_id;
     bool _client_side;
 
