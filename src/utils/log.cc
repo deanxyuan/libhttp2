@@ -1,44 +1,64 @@
 #include "src/utils/log.h"
-
 #include <stdarg.h>
 #include <stdlib.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
+#include <time.h>
 #include <chrono>
+#ifdef _WIN32
+#include <Windows.h>
+#include <processthreadsapi.h>
+#else
+#include <pthread.h>
+#endif
+
 #include "src/utils/atomic.h"
 
-typedef struct {
-    const char *file;
-    int line;
-    log_level level;
-    char *message;
-} internal_log_info;
+namespace {
+void DefalutLogPrint(const char *file, int line, int level, const char *message);
+AtomicIntptr g_log_function((intptr_t)DefalutLogPrint);
+AtomicInt32 g_min_level(0);
+char g_level_char[4] = {'D', 'I', 'W', 'E'};
+#ifdef _WIN32
+constexpr char delimiter = '\\';
+#define RAPTOR_LOG_FORMAT "[%s.%06d %5lu %c] %s (%s:%d)"
+#else
+constexpr char delimiter = '/';
+#define RAPTOR_LOG_FORMAT "[%s.%06d %7lu %c] %s (%s:%d)"
+#endif
 
-typedef void (*log_output_func)(internal_log_info *);
-void format_log_output_impl(internal_log_info *info);
+int64_t GetCurrentMicroseconds() {
+    auto n = std::chrono::system_clock::now();
+    return std::chrono::duration_cast<std::chrono::microseconds>(n.time_since_epoch()).count();
+}
 
-AtomicIntptr global_log_func((intptr_t)format_log_output_impl);
-char g_level_string[] = {'D', 'I', 'E'};
-bool global_enable_log = true;
+void DefalutLogPrint(const char *file, int line, int level, const char *message) {
+    const char *last_slash = NULL;
+    const char *display_file = NULL;
+    char time_buffer[64] = {0};
 
-void format_log_output_impl(internal_log_info *info) {
-    auto display_file = strstr(info->file, "src");
-    if (!display_file) {
-        display_file = info->file;
+    last_slash = strrchr(file, delimiter);
+    if (last_slash == NULL) {
+        display_file = file;
+    } else {
+        display_file = last_slash + 1;
     }
 
-    char time_buffer[64] = {0};
-    time_t timer = time(NULL);
+    int64_t microsec = GetCurrentMicroseconds();
+    time_t seconds = microsec / 1000000;
+    int remain_microsec = static_cast<int>(microsec % 1000000);
 
 #ifdef _WIN32
+    auto threadid = static_cast<unsigned long>(GetCurrentThreadId());
     struct tm stm;
-    if (localtime_s(&stm, &timer)) {
+    if (localtime_s(&stm, &seconds)) {
         strcpy(time_buffer, "error:localtime");
     }
 #else
+    auto threadid = static_cast<unsigned long>(pthread_self());
     struct tm stm;
-    if (!localtime_r(&timer, &stm)) {
+    if (!localtime_r(&seconds, &stm)) {
         strcpy(time_buffer, "error:localtime");
     }
 #endif
@@ -47,19 +67,26 @@ void format_log_output_impl(internal_log_info *info) {
         strcpy(time_buffer, "error:strftime");
     }
 
-    auto d = std::chrono::system_clock::now().time_since_epoch();
-    auto m = std::chrono::duration_cast<std::chrono::milliseconds>(d);
-    int millisec = m.count() % 1000;
-    fprintf(stderr, "[%s.%03u %c] %s (%s:%d)\n", time_buffer,
-            millisec,  // millisecond
-            g_level_string[static_cast<int>(info->level)], info->message, display_file, info->line);
+    fprintf(stderr, RAPTOR_LOG_FORMAT, time_buffer,
+            remain_microsec,  // microseconds
+            threadid, g_level_char[level], message, display_file, line);
 
     fflush(stderr);
 }
+}  // namespace
 
-void format_log_output(const char *file, int line, log_level level, const char *format, ...) {
-    if (!global_enable_log) return;
-#ifndef NDEBUG
+void LogSetLevel(int level) {
+    if (level < 0 || level > 3) {
+        return;
+    }
+    g_min_level.Store(level);
+}
+
+void LogSetPrintFunction(log_print_func callback) {
+    g_log_function.Store((intptr_t)callback);
+}
+
+void LogFormatPrint(const char *file, int line, int level, const char *format, ...) {
 
     char *message = NULL;
     va_list args;
@@ -83,12 +110,8 @@ void format_log_output(const char *file, int line, log_level level, const char *
         return;
     }
 #endif
-    internal_log_info info;
-    info.file = file;
-    info.line = line;
-    info.level = level;
-    info.message = message;
-    ((log_output_func)global_log_func.Load())(&info);
+    if (g_min_level.Load() <= level) {
+        ((log_print_func)g_log_function.Load())(file, line, level, message);
+    }
     free(message);
-#endif
 }

@@ -10,11 +10,17 @@
 #include "src/http2/pack.h"
 #include "src/http2/flow_control.h"
 
-http2_connection::http2_connection(http2::TcpSendService *sender, uint64_t cid, bool client_side)
-    : _dynamic_table(g_http2_settings_parameters[HTTP2_SETTINGS_HEADER_TABLE_SIZE].default_value) {
-    _sender_service = sender;
-    _connection_id = cid;
-    _client_side = client_side;
+const uint8_t http2_connection::PREFACE[24] = {0x50, 0x52, 0x49, 0x20, 0x2a, 0x20, 0x48, 0x54,
+                                               0x54, 0x50, 0x2f, 0x32, 0x2e, 0x30, 0x0d, 0x0a,
+                                               0x0d, 0x0a, 0x53, 0x4d, 0x0d, 0x0a, 0x0d, 0x0a};
+
+http2_connection::http2_connection(http2::SendService *sender, http2::EventHandler *handler,
+                                   uint64_t cid, bool client_side)
+    : _dynamic_table(g_http2_settings_parameters[HTTP2_SETTINGS_HEADER_TABLE_SIZE].default_value)
+    , _sender_service(sender)
+    , _event_handler(handler)
+    , _connection_id(cid)
+    , _client_side(client_side) {
 
     for (size_t i = 0; i < HTTP2_NUMBER_OF_SETTINGS; i++) {
         _local_settings[i] = g_http2_settings_parameters[i].default_value;
@@ -27,7 +33,8 @@ http2_connection::http2_connection(http2::TcpSendService *sender, uint64_t cid, 
     _local_settings[HTTP2_SETTINGS_INITIAL_WINDOW_SIZE] = _flow_control->InitialWindowSize();
     _local_settings[HTTP2_SETTINGS_MAX_FRAME_SIZE] = _flow_control->MaxFrameSize();
     _local_settings[HTTP2_SETTINGS_MAX_HEADER_LIST_SIZE] = MAX_HEADER_LIST_SIZE;
-    _local_settings[HTTP2_SETTINGS_GRPC_ALLOW_TRUE_BINARY_METADATA] = GRPC_ALLOW_TRUE_BINARY_METADATA;
+    _local_settings[HTTP2_SETTINGS_GRPC_ALLOW_TRUE_BINARY_METADATA] =
+        GRPC_ALLOW_TRUE_BINARY_METADATA;
 
     if (client_side) {
         _local_settings[HTTP2_SETTINGS_ENABLE_PUSH] = 0;
@@ -37,7 +44,8 @@ http2_connection::http2_connection(http2::TcpSendService *sender, uint64_t cid, 
         _next_stream_id = 2;
     }
     hpack::compressor_init(&_send_record);
-    hpack::compressor_set_max_table_size(&_send_record, _remote_settings[HTTP2_SETTINGS_HEADER_TABLE_SIZE]);
+    hpack::compressor_set_max_table_size(&_send_record,
+                                         _remote_settings[HTTP2_SETTINGS_HEADER_TABLE_SIZE]);
 
     _finish_handshake = false;
     _last_stream_id = 0;
@@ -56,7 +64,8 @@ http2_connection::~http2_connection() {
     hpack::compressor_destroy(&_send_record);
 }
 
-http2_settings_entry http2_connection::make_settings_entry(http2_setting_id setting_id, uint32_t value) {
+http2_settings_entry http2_connection::make_settings_entry(http2_setting_id setting_id,
+                                                           uint32_t value) {
     http2_settings_entry entry;
     entry.id = g_setting_id_to_wire_id[setting_id];
     entry.value = value;
@@ -67,21 +76,24 @@ void http2_connection::announced_init_settings() {
     std::vector<http2_settings_entry> vs;
     if (_client_side) {
         // send connection preface
-        _sender_service->SendTcpData(_connection_id, PREFACE, PREFACE_SIZE);
+        _sender_service->SendRawData(_connection_id, PREFACE, PREFACE_SIZE);
         _finish_handshake = true;
 
-        vs.emplace_back(make_settings_entry(HTTP2_SETTINGS_ENABLE_PUSH, local_settings(HTTP2_SETTINGS_ENABLE_PUSH)));
+        vs.emplace_back(make_settings_entry(HTTP2_SETTINGS_ENABLE_PUSH,
+                                            local_settings(HTTP2_SETTINGS_ENABLE_PUSH)));
         vs.emplace_back(make_settings_entry(HTTP2_SETTINGS_MAX_CONCURRENT_STREAMS,
                                             local_settings(HTTP2_SETTINGS_MAX_CONCURRENT_STREAMS)));
     }
-    vs.emplace_back(
-        make_settings_entry(HTTP2_SETTINGS_INITIAL_WINDOW_SIZE, local_settings(HTTP2_SETTINGS_INITIAL_WINDOW_SIZE)));
-    vs.emplace_back(make_settings_entry(HTTP2_SETTINGS_MAX_FRAME_SIZE, local_settings(HTTP2_SETTINGS_MAX_FRAME_SIZE)));
-    vs.emplace_back(
-        make_settings_entry(HTTP2_SETTINGS_MAX_HEADER_LIST_SIZE, local_settings(HTTP2_SETTINGS_MAX_HEADER_LIST_SIZE)));
+    vs.emplace_back(make_settings_entry(HTTP2_SETTINGS_INITIAL_WINDOW_SIZE,
+                                        local_settings(HTTP2_SETTINGS_INITIAL_WINDOW_SIZE)));
+    vs.emplace_back(make_settings_entry(HTTP2_SETTINGS_MAX_FRAME_SIZE,
+                                        local_settings(HTTP2_SETTINGS_MAX_FRAME_SIZE)));
+    vs.emplace_back(make_settings_entry(HTTP2_SETTINGS_MAX_HEADER_LIST_SIZE,
+                                        local_settings(HTTP2_SETTINGS_MAX_HEADER_LIST_SIZE)));
 
-    vs.emplace_back(make_settings_entry(HTTP2_SETTINGS_GRPC_ALLOW_TRUE_BINARY_METADATA,
-                                        local_settings(HTTP2_SETTINGS_GRPC_ALLOW_TRUE_BINARY_METADATA)));
+    vs.emplace_back(
+        make_settings_entry(HTTP2_SETTINGS_GRPC_ALLOW_TRUE_BINARY_METADATA,
+                            local_settings(HTTP2_SETTINGS_GRPC_ALLOW_TRUE_BINARY_METADATA)));
 
     http2_frame_settings settings = build_http2_frame_settings(0, vs);
     send_http2_frame(&settings);
@@ -120,6 +132,10 @@ uint64_t http2_connection::connection_id() const {
     return _connection_id;
 }
 
+bool http2_connection::is_client_side() const {
+    return _client_side;
+}
+
 bool http2_connection::need_verify_preface() {
     return !_finish_handshake;
 }
@@ -128,7 +144,8 @@ void http2_connection::verify_preface_done() {
     _finish_handshake = true;
 }
 
-void http2_connection::send_goaway(uint32_t error_code, uint32_t last_stream_id) {
+void http2_connection::send_goaway(uint32_t error_code, uint32_t last_stream_id,
+                                   const std::string &debug) {
     if (last_stream_id == 0) {
         last_stream_id = _last_stream_id;
     }
@@ -162,7 +179,8 @@ void http2_connection::end_of_stream(std::shared_ptr<http2_stream> &stream) {
 
 int http2_connection::package_process(const uint8_t *package, uint32_t package_length) {
     if (package_length < HTTP2_FRAME_HEADER_SIZE) {
-        log_error("process http2 package, package length(%u) < HTTP2_FRAME_HEADER_SIZE(9)", package_length);
+        log_error("process http2 package, package length(%u) < HTTP2_FRAME_HEADER_SIZE(9)",
+                  package_length);
         abort();
         return -1;
     }
@@ -170,8 +188,8 @@ int http2_connection::package_process(const uint8_t *package, uint32_t package_l
     http2_frame_hdr hdr;
     http2_frame_header_unpack(&hdr, package);
     if (package_length < hdr.length + HTTP2_FRAME_HEADER_SIZE) {
-        log_error("process http2 package, the payload is incomplete. package length(%u) < need(%u)", package_length,
-                  hdr.length + HTTP2_FRAME_HEADER_SIZE);
+        log_error("process http2 package, the payload is incomplete. package length(%u) < need(%u)",
+                  package_length, hdr.length + HTTP2_FRAME_HEADER_SIZE);
         abort();
         return -1;
     }
@@ -179,8 +197,8 @@ int http2_connection::package_process(const uint8_t *package, uint32_t package_l
     // check max frame size settings
     uint32_t max_frame_size = local_settings(HTTP2_SETTINGS_MAX_FRAME_SIZE);
     if (hdr.length > max_frame_size) {
-        log_error("process http2 package, but length(%u) exceeds the maximum frame size limit(%u)", package_length,
-                  max_frame_size);
+        log_error("process http2 package, but length(%u) exceeds the maximum frame size limit(%u)",
+                  package_length, max_frame_size);
         send_goaway(HTTP2_FRAME_SIZE_ERROR);
         return -1;
     }
@@ -278,7 +296,8 @@ int http2_connection::package_process(const uint8_t *package, uint32_t package_l
     return 0;
 }
 
-void http2_connection::received_data(std::shared_ptr<http2_stream> &stream, http2_frame_data *frame) {
+void http2_connection::received_data(std::shared_ptr<http2_stream> &stream,
+                                     http2_frame_data *frame) {
     if (frame->pad_len >= frame->hdr.length) {
         send_goaway(HTTP2_PROTOCOL_ERROR);
         return;
@@ -299,7 +318,8 @@ void http2_connection::received_data(std::shared_ptr<http2_stream> &stream, http
     headers.push_back({"content-type", "application/grpc"});
     headers.push_back({"grpc-accept-encoding", "identity,deflate,gzip"});
     headers.push_back({"accept-encoding", "identity,gzip"});
-    bool use_true_binary_metadata = _remote_settings[HTTP2_SETTINGS_GRPC_ALLOW_TRUE_BINARY_METADATA];
+    bool use_true_binary_metadata =
+        _remote_settings[HTTP2_SETTINGS_GRPC_ALLOW_TRUE_BINARY_METADATA];
     slice_buffer header_block_fragment;
     hpack::compressor_encode_headers(&_send_record, nullptr, &headers, &header_block_fragment,
                                      use_true_binary_metadata);
@@ -307,7 +327,8 @@ void http2_connection::received_data(std::shared_ptr<http2_stream> &stream, http
     // send frame
 }
 
-void http2_connection::received_header(std::shared_ptr<http2_stream> &stream, http2_frame_headers *frame) {
+void http2_connection::received_header(std::shared_ptr<http2_stream> &stream,
+                                       http2_frame_headers *frame) {
     if (frame->hdr.stream_id == 0) {
         send_goaway(HTTP2_PROTOCOL_ERROR);
         return;
@@ -332,7 +353,8 @@ void http2_connection::received_header(std::shared_ptr<http2_stream> &stream, ht
 
     slice headers = frame->header_block_fragment;
     std::vector<hpack::mdelem_data> decoded_headers;
-    int err = hpack::decode_headers(headers.data(), headers.size(), &_dynamic_table, &decoded_headers);
+    int err =
+        hpack::decode_headers(headers.data(), headers.size(), &_dynamic_table, &decoded_headers);
     if (err != HTTP2_NO_ERROR) {
         send_goaway(err);
         return;
@@ -341,7 +363,8 @@ void http2_connection::received_header(std::shared_ptr<http2_stream> &stream, ht
     stream->recv_headers(decoded_headers);
 }
 
-void http2_connection::received_priority(std::shared_ptr<http2_stream> &stream, http2_frame_priority *frame) {
+void http2_connection::received_priority(std::shared_ptr<http2_stream> &stream,
+                                         http2_frame_priority *frame) {
     if (frame->hdr.length != 5) {
         send_goaway(HTTP2_FRAME_SIZE_ERROR);
         return;
@@ -356,7 +379,8 @@ void http2_connection::received_priority(std::shared_ptr<http2_stream> &stream, 
     }
 }
 
-void http2_connection::received_rst_stream(std::shared_ptr<http2_stream> &stream, http2_frame_rst_stream *frame) {
+void http2_connection::received_rst_stream(std::shared_ptr<http2_stream> &stream,
+                                           http2_frame_rst_stream *frame) {
     if (frame->hdr.length != 4) {
         send_goaway(HTTP2_FRAME_SIZE_ERROR);
         return;
@@ -402,7 +426,8 @@ void http2_connection::received_settings(http2_frame_settings *frame) {
     send_http2_frame(&settings_ack);
 }
 
-void http2_connection::received_push_promise(std::shared_ptr<http2_stream> &stream, http2_frame_push_promise *frame) {
+void http2_connection::received_push_promise(std::shared_ptr<http2_stream> &stream,
+                                             http2_frame_push_promise *frame) {
     if (frame->pad_len >= frame->hdr.length) {
         send_goaway(HTTP2_PROTOCOL_ERROR);
         return;
@@ -427,7 +452,8 @@ void http2_connection::received_push_promise(std::shared_ptr<http2_stream> &stre
 
     auto promise_stream = find_stream(frame->promised_stream_id);
     if (!promise_stream) {
-        promise_stream = std::make_shared<http2_stream>(_flow_control.get(), frame->promised_stream_id);
+        promise_stream =
+            std::make_shared<http2_stream>(_flow_control.get(), frame->promised_stream_id);
     } else if (promise_stream->get_state() != http2_stream::IDLE) {
         send_goaway(HTTP2_PROTOCOL_ERROR);
         return;
@@ -437,7 +463,8 @@ void http2_connection::received_push_promise(std::shared_ptr<http2_stream> &stre
 
     std::vector<hpack::mdelem_data> decoded_headers;
     slice headers = frame->header_block_fragment;
-    int ret = hpack::decode_headers(headers.data(), headers.size(), &_dynamic_table, &decoded_headers);
+    int ret =
+        hpack::decode_headers(headers.data(), headers.size(), &_dynamic_table, &decoded_headers);
     if (ret != HTTP2_NO_ERROR) {
         send_goaway(ret);
         return;
@@ -486,7 +513,8 @@ void http2_connection::received_goaway(http2_frame_goaway *frame) {
     }
 }
 
-void http2_connection::received_window_update(std::shared_ptr<http2_stream> &stream, http2_frame_window_update *frame) {
+void http2_connection::received_window_update(std::shared_ptr<http2_stream> &stream,
+                                              http2_frame_window_update *frame) {
     if (frame->hdr.length != 4) {
         send_goaway(HTTP2_FRAME_SIZE_ERROR);
         return;
@@ -506,7 +534,8 @@ void http2_connection::received_window_update(std::shared_ptr<http2_stream> &str
     }
 }
 
-void http2_connection::received_continuation(std::shared_ptr<http2_stream> &stream, http2_frame_continuation *frame) {
+void http2_connection::received_continuation(std::shared_ptr<http2_stream> &stream,
+                                             http2_frame_continuation *frame) {
     if (!_next_frame_limit) {
         send_goaway(HTTP2_PROTOCOL_ERROR);
         return;
@@ -519,7 +548,8 @@ void http2_connection::received_continuation(std::shared_ptr<http2_stream> &stre
 
     slice headers = frame->header_block_fragment;
     std::vector<hpack::mdelem_data> decoded_headers;
-    int ret = hpack::decode_headers(headers.data(), headers.size(), &_dynamic_table, &decoded_headers);
+    int ret =
+        hpack::decode_headers(headers.data(), headers.size(), &_dynamic_table, &decoded_headers);
     if (ret != HTTP2_NO_ERROR) {
         send_goaway(ret);
         return;
@@ -532,13 +562,13 @@ void http2_connection::received_continuation(std::shared_ptr<http2_stream> &stre
 void http2_connection::send_tcp_data(slice_buffer &sb) {
     while (!sb.empty()) {
         const slice &s = sb.front();
-        _sender_service->SendTcpData(_connection_id, s.data(), s.size());
+        _sender_service->SendRawData(_connection_id, s.data(), s.size());
         sb.pop_front();
     }
 }
 
 void http2_connection::send_tcp_data(slice s) {
-    _sender_service->SendTcpData(_connection_id, s.data(), s.size());
+    _sender_service->SendRawData(_connection_id, s.data(), s.size());
 }
 
 void http2_connection::send_http2_frame(http2_frame_data *frame) {
