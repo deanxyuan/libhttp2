@@ -64,13 +64,11 @@ set(HPACK_SOURCES
 
 set(HTTP2_SOURCES
     "${PROJECT_SOURCE_DIR}/src/http2/connection.cc"
-    "${PROJECT_SOURCE_DIR}/src/http2/flow_control.cc"
     "${PROJECT_SOURCE_DIR}/src/http2/frame.cc"
     "${PROJECT_SOURCE_DIR}/src/http2/pack.cc"
     "${PROJECT_SOURCE_DIR}/src/http2/parser.cc"
     "${PROJECT_SOURCE_DIR}/src/http2/settings.cc"
     "${PROJECT_SOURCE_DIR}/src/http2/stream.cc"
-    "${PROJECT_SOURCE_DIR}/src/http2/transport.cc"
 )
 
 set(UTILS_SOURCES
@@ -84,7 +82,6 @@ set(UTILS_SOURCES
 target_sources(http2
     PRIVATE
     "${PROJECT_SOURCE_DIR}/src/http2.cc"
-    "${PROJECT_SOURCE_DIR}/src/init.cc"
     ${HPACK_SOURCES}
     ${HTTP2_SOURCES}
     ${UTILS_SOURCES}

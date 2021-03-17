@@ -37,8 +37,7 @@ void compressor_init(compressor *c);
 void compressor_destroy(compressor *c);
 void compressor_set_max_table_size(compressor *c, uint32_t max_table_size);
 void compressor_set_max_usable_size(compressor *c, uint32_t max_table_size);
-void compressor_encode_headers(compressor *c, const std::vector<mdelem_data> *extra_headers,
-                               const std::vector<mdelem_data> *metadata, slice_buffer *output,
-                               bool use_true_binary_metadata);
+void compressor_encode_headers(compressor *c, const std::vector<mdelem_data> *metadata,
+                               slice_buffer *output, bool use_true_binary_metadata);
 size_t get_size_in_hpack_table(mdelem_data elem, bool use_ture_binary_metadata);
 }  // namespace hpack

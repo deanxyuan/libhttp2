@@ -32,13 +32,14 @@ public:
     void pop_front();
     void pop_back();
 
-    // after transfer, this class is reset
-    // output will be replace
-    void transfer(slice_buffer *output);
+    const slice &operator[](size_t i) const;
+    const slice &at(size_t i) const {
+        return this->operator[](i);
+    }
 
-private:
     size_t copy_to_buffer(void *buff, size_t len);
 
+private:
     std::vector<slice> _vs;
     size_t _length;
 };

@@ -52,24 +52,25 @@ enum http2_stream_event {
     _STREAM_EVENT_COUNTER
 };
 
-const http2_stream::State
-    event_status_table[static_cast<int>(_STREAM_EVENT_COUNTER)][static_cast<int>(http2_stream::ERROR)] = {
-        {http2_stream::OPEN, http2_stream::ERROR, http2_stream::HALF_CLOSED_LOCAL, http2_stream::ERROR,
-         http2_stream::ERROR, http2_stream::ERROR, http2_stream::ERROR},
-        {http2_stream::OPEN, http2_stream::HALF_CLOSED_REMOTE, http2_stream::ERROR, http2_stream::ERROR,
-         http2_stream::ERROR, http2_stream::ERROR, http2_stream::ERROR},
-        {http2_stream::RESERVED_REMOTE, http2_stream::ERROR, http2_stream::ERROR, http2_stream::ERROR,
-         http2_stream::ERROR, http2_stream::ERROR, http2_stream::ERROR},
-        {http2_stream::RESERVED_LOCAL, http2_stream::ERROR, http2_stream::ERROR, http2_stream::ERROR,
-         http2_stream::ERROR, http2_stream::ERROR, http2_stream::ERROR},
-        {http2_stream::ERROR, http2_stream::ERROR, http2_stream::ERROR, http2_stream::HALF_CLOSED_REMOTE,
-         http2_stream::CLOSED, http2_stream::ERROR, http2_stream::ERROR},
-        {http2_stream::ERROR, http2_stream::ERROR, http2_stream::ERROR, http2_stream::HALF_CLOSED_LOCAL,
-         http2_stream::ERROR, http2_stream::CLOSED, http2_stream::ERROR},
-        {http2_stream::ERROR, http2_stream::CLOSED, http2_stream::CLOSED, http2_stream::CLOSED, http2_stream::CLOSED,
-         http2_stream::CLOSED, http2_stream::ERROR},
-        {http2_stream::ERROR, http2_stream::CLOSED, http2_stream::CLOSED, http2_stream::CLOSED, http2_stream::CLOSED,
-         http2_stream::CLOSED, http2_stream::ERROR},
+const http2_stream::State event_status_table[static_cast<int>(
+    _STREAM_EVENT_COUNTER)][static_cast<int>(http2_stream::ERROR)] = {
+    {http2_stream::OPEN, http2_stream::ERROR, http2_stream::HALF_CLOSED_LOCAL, http2_stream::ERROR,
+     http2_stream::ERROR, http2_stream::ERROR, http2_stream::ERROR},
+    {http2_stream::OPEN, http2_stream::HALF_CLOSED_REMOTE, http2_stream::ERROR, http2_stream::ERROR,
+     http2_stream::ERROR, http2_stream::ERROR, http2_stream::ERROR},
+    {http2_stream::RESERVED_REMOTE, http2_stream::ERROR, http2_stream::ERROR, http2_stream::ERROR,
+     http2_stream::ERROR, http2_stream::ERROR, http2_stream::ERROR},
+    {http2_stream::RESERVED_LOCAL, http2_stream::ERROR, http2_stream::ERROR, http2_stream::ERROR,
+     http2_stream::ERROR, http2_stream::ERROR, http2_stream::ERROR},
+    {http2_stream::ERROR, http2_stream::ERROR, http2_stream::ERROR,
+     http2_stream::HALF_CLOSED_REMOTE, http2_stream::CLOSED, http2_stream::ERROR,
+     http2_stream::ERROR},
+    {http2_stream::ERROR, http2_stream::ERROR, http2_stream::ERROR, http2_stream::HALF_CLOSED_LOCAL,
+     http2_stream::ERROR, http2_stream::CLOSED, http2_stream::ERROR},
+    {http2_stream::ERROR, http2_stream::CLOSED, http2_stream::CLOSED, http2_stream::CLOSED,
+     http2_stream::CLOSED, http2_stream::CLOSED, http2_stream::ERROR},
+    {http2_stream::ERROR, http2_stream::CLOSED, http2_stream::CLOSED, http2_stream::CLOSED,
+     http2_stream::CLOSED, http2_stream::CLOSED, http2_stream::ERROR},
 };
 
 http2_stream::State get_next_status(http2_stream_event event, http2_stream::State status) {
@@ -194,10 +195,6 @@ void http2_stream::mark_unreadable() {
     _read_closed = true;
 }
 
-StreamFlowControl *http2_stream::flow_control() {
-    return &_flow_control;
-}
-
 bool http2_stream::try_send_push_promise() {
     if (_write_closed) return false;
     auto s = get_next_status(STREAM_EVENT_PP_S, _state);
@@ -220,4 +217,8 @@ bool http2_stream::try_send_end_stream() {
     if (_write_closed) return false;
     auto s = get_next_status(STREAM_EVENT_ES_S, _state);
     return (s != State::ERROR);
+}
+
+std::shared_ptr<http2::Stream> http2_stream::get_shared_stream() {
+    return shared_from_this();
 }

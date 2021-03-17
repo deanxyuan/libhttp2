@@ -1,28 +1,18 @@
 #pragma once
 #include <stddef.h>
 #include <stdint.h>
+#include <memory>
 #include <string>
 #include <vector>
 
 #include "src/hpack/metadata.h"
 #include "src/utils/slice_buffer.h"
-#include "src/http2/flow_control.h"
 
-class http2_stream {
+#include "http2/transport.h"
+
+class http2_stream : public http2::Stream, public std::enable_shared_from_this<http2_stream> {
 public:
-    static constexpr uint32_t MAX_STREAM_ID = 0x7fffffff;
-    enum State : uint8_t {
-        IDLE,
-        RESERVED_LOCAL,
-        RESERVED_REMOTE,
-        OPEN,
-        HALF_CLOSED_LOCAL,
-        HALF_CLOSED_REMOTE,
-        CLOSED,
-        ERROR,
-    };
-
-    http2_stream(ConnectionFlowControl *cfc, uint32_t stream_id);
+    http2_stream(uint64_t connection_id, uint32_t stream_id);
     ~http2_stream() {}
 
     // action
@@ -43,27 +33,28 @@ public:
 
     uint8_t frame_type();
     uint8_t frame_flags();
-    void frame_type(uint8_t type);
-    void frame_flags(uint8_t flags);
+
+    int get_state() const;
 
     void append_headers(const std::vector<hpack::mdelem_data> &headers);
     void append_data(slice s);
 
     bool is_closed() const;
     uint32_t stream_id() const;
-    void set_weight(int32_t w);
-    http2_stream::State get_state() const;
+
+    void set_priority_info(http2_priority_spec *info);
+    void save_frame_info(http2_frame_hdr *hdr);
+
     void mark_unwritable();
     void mark_unreadable();
 
-    StreamFlowControl *flow_control();
+    std::shared_ptr<http2::Stream> get_shared_stream();
 
 private:
-    StreamFlowControl _flow_control;
-    uint32_t _stream_id;
     uint64_t _connection_id;
+    uint32_t _stream_id;
 
-    State _state;
+    int _current_state;
 
     uint8_t _frame_flags;
     uint8_t _frame_type;

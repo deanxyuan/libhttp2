@@ -1,7 +1,6 @@
 #include "http2/transport.h"
 #include "src/http2/connection.h"
 #include "src/http2/errors.h"
-#include "src/http2/settings.h"
 #include "src/hpack/static_metadata.h"
 
 #include "src/utils/log.h"
@@ -45,19 +44,22 @@ public:
 namespace http2 {
 class TransportAdaptor : public Transport {
 public:
-    TransportAdaptor(uint64_t cid, bool client_side, EventHandler *handler, SendService *service);
+    TransportAdaptor(SendService *service, uint64_t cid, bool client_side);
     ~TransportAdaptor();
 
     uint64_t GetConnectionId() override;
     bool IsClientSide() override;
 
-    void SendPing(uint64_t info) override;
-    void SendSettings(const std::vector<std::pair<uint16_t, uint32_t>> &settings) override;
-    void SendPriority(uint32_t stream_id, uint8_t weight, uint32_t depend_stream_id) override;
+    void SetFlowControlHandler(FlowControlHandler *handler) override;
+    void SetFrameEventHandler(FrameEventHandler *handler) override;
 
-    void SendRSTStream(uint32_t stream_id, uint32_t error_code) override;
+    bool SendPing(uint64_t info) override;
+    bool SendSettings(const std::vector<std::pair<uint16_t, uint32_t>> &settings) override;
+    bool SendPriority(uint32_t stream_id, uint8_t weight, uint32_t depend_stream_id) override;
+
+    bool SendRSTStream(uint32_t stream_id, uint32_t error_code) override;
     void SendGoAway(uint32_t last_stream_id, uint32_t error_code, const std::string &debug) override;
-    void SendWindowUpdate(uint32_t stream_id, uint32_t window_update_size) override;
+    bool SendWindowUpdate(uint32_t stream_id, WindowUpdate *wu) override;
 
     bool SendRequest(Request *req) override;
     bool SendResponse(Response *rsp) override;
@@ -88,9 +90,9 @@ private:
     http2_connection _impl;
 };
 
-TransportAdaptor::TransportAdaptor(uint64_t cid, bool client_side, EventHandler *handler, SendService *service)
+TransportAdaptor::TransportAdaptor(SendService *service, uint64_t cid, bool client_side)
     : _internal(InternalTag())
-    , _impl(service, handler, cid, client_side) {}
+    , _impl(service, cid, client_side) {}
 
 TransportAdaptor::~TransportAdaptor() {}
 
@@ -102,41 +104,52 @@ bool TransportAdaptor::IsClientSide() {
     return _impl.is_client_side();
 }
 
-void TransportAdaptor::SendPing(uint64_t info) {
-    _impl.send_ping(info);
+void TransportAdaptor::SetFlowControlHandler(FlowControlHandler *handler) {
+    _impl.set_flow_control_handler(handler);
 }
 
-void TransportAdaptor::SendSettings(const std::vector<std::pair<uint16_t, uint32_t>> &settings) {
-    _impl.send_settings(settings);
+void TransportAdaptor::SetFrameEventHandler(FrameEventHandler *handler) {
+    _impl.set_frame_event_handler(handler);
 }
 
-void TransportAdaptor::SendPriority(uint32_t stream_id, uint8_t weight, uint32_t depend_stream_id) {
-    _impl.send_priority(stream_id, weight, 0);
+bool TransportAdaptor::SendPing(uint64_t info) {
+    return _impl.send_ping(info);
 }
 
-void TransportAdaptor::SendRSTStream(uint32_t stream_id, uint32_t error_code) {
-    _impl.send_rst_stream(stream_id, error_code);
+bool TransportAdaptor::SendSettings(const std::vector<std::pair<uint16_t, uint32_t>> &settings) {
+    return _impl.send_settings(settings);
+}
+
+bool TransportAdaptor::SendPriority(uint32_t stream_id, uint8_t weight, uint32_t depend_stream_id) {
+    return _impl.send_priority(stream_id, weight, 0);
+}
+
+bool TransportAdaptor::SendRSTStream(uint32_t stream_id, uint32_t error_code) {
+    return _impl.send_rst_stream(stream_id, error_code);
 }
 
 void TransportAdaptor::SendGoAway(uint32_t last_stream_id, uint32_t error_code, const std::string &debug) {
     _impl.send_goaway(error_code, last_stream_id, debug);
 }
 
-void TransportAdaptor::SendWindowUpdate(uint32_t stream_id, uint32_t window_update_size) {
-    _impl.send_window_update(stream_id, window_update_size);
+bool TransportAdaptor::SendWindowUpdate(uint32_t stream_id, WindowUpdate *wu) {
+    if (!wu) return false;
+    return _impl.send_window_update(stream_id, wu);
 }
 
 bool TransportAdaptor::SendRequest(Request *req) {
+    if (!req) return false;
     return _impl.send_request(req);
 }
 
 bool TransportAdaptor::SendResponse(Response *rsp) {
+    if (!rsp) return false;
     return _impl.send_response(rsp);
 }
 
-uint32_t TransportAdaptor::CreateStream(std::vector<std::pair<std::string, std::string>> *initlize_headers) {
-    if (initlize_headers && !initlize_headers->empty()) {
-        return _impl.send_push_promise(initlize_headers);
+uint32_t TransportAdaptor::CreateStream(std::vector<std::pair<std::string, std::string>> *headers) {
+    if (headers && !headers->empty()) {
+        return _impl.send_push_promise(headers);
     }
     return _impl.create_stream();
 }
@@ -220,8 +233,8 @@ void TransportAdaptor::Shutdown() {
     // TODO(SHADOW): cleanup
 }
 
-Transport *CreateTransport(uint64_t connection_id, bool client_side, EventHandler *handler, SendService *service) {
-    auto transport = new TransportAdaptor(connection_id, client_side, handler, service);
+Transport *CreateTransport(uint64_t connection_id, bool client_side, SendService *service) {
+    auto transport = new TransportAdaptor(service, connection_id, client_side);
     return transport;
 }
 

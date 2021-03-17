@@ -117,8 +117,8 @@ typedef struct {
 
 // Follow the PRIORITY flag to exist
 typedef struct {
-    int32_t stream_id;
-    int32_t weight;
+    uint32_t stream_id;
+    uint16_t weight;
     uint8_t exclusive;
 } http2_priority_spec;
 
@@ -191,5 +191,11 @@ void http2_frame_header_init(http2_frame_hdr *hd, size_t length, uint8_t type, u
 http2_frame_settings build_http2_frame_settings(int flag, std::vector<http2_settings_entry> &settings);
 http2_frame_settings build_http2_frame_settings_ack();
 http2_frame_ping build_http2_frame_ping(uint8_t payload[8], bool ack);
-http2_frame_goaway build_http2_frame_goaway(uint32_t error_code, uint32_t last_stream_id);
+http2_frame_goaway build_http2_frame_goaway(uint32_t error_code, uint32_t last_stream_id, slice debug);
 http2_frame_window_update build_http2_frame_window_update(uint32_t stream_id, uint32_t window_size_inc);
+// TODO
+http2_frame_data build_http2_frame_data(uint32_t stream_id, const slice &data, int flags);
+http2_frame_headers build_http2_frame_headers(uint32_t stream_id, slice_buffer *header_block_fragment, int flags);
+http2_frame_push_promise build_http2_frame_push_promise(uint32_t stream_id, slice_buffer *header_block_fragment);
+http2_frame_rst_stream build_http2_frame_rst_stream(uint32_t error_code);
+http2_frame_priority build_http2_frame_priority(http2_priority_spec *spec);

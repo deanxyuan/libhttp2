@@ -146,7 +146,7 @@ void slice_buffer::pop_back() {
     }
 }
 
-void slice_buffer::transfer(slice_buffer *output) {
-    output->_length = std::move(_length);
-    output->_vs = std::move(_vs);
+const slice &slice_buffer::operator[](size_t i) const {
+    assert(i < _vs.size());
+    return _vs[i];
 }

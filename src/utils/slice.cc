@@ -34,7 +34,7 @@ void slice_refcount::unref() {
     }
 }
 
-slice::slice(const void *ptr, size_t len) {
+slice::slice(const char *ptr, size_t len) {
     if (len == 0) {  // empty object
         _refs = nullptr;
         memset(&_data, 0, sizeof(_data));
@@ -67,15 +67,19 @@ slice::slice(const void *ptr, size_t len) {
         }
     }
 }
-
+slice::slice(const char *ptr)
+    : slice(ptr, strlen(ptr)) {}
+slice::slice(const void *ptr, size_t len)
+    : slice(reinterpret_cast<const char *>(ptr), len) {}
+slice::slice(void *ptr, size_t len)
+    : slice((const char *)(ptr), len) {}
 slice::slice(const std::string &str)
-    : slice(static_cast<const void *>(str.data()), str.size()) {}
+    : slice(str.data(), str.size()) {}
 
-slice::slice(const char *str)
-    : slice(static_cast<const void *>(str), strlen(str)) {}
-
-slice::slice()
-    : slice(nullptr, 0) {}
+slice::slice() {
+    _refs = nullptr;
+    memset(&_data, 0, sizeof(_data));
+}
 
 slice::~slice() {
     if (_refs) {
@@ -201,6 +205,11 @@ bool slice::operator==(const slice &s) const {
     }
 
     return memcmp(data(), s.data(), size()) == 0;
+}
+
+slice &slice::operator+=(const slice &s) {
+    this->operator=(*this + s);
+    return *this;
 }
 
 std::once_flag of;

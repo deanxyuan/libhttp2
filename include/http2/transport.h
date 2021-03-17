@@ -6,7 +6,21 @@
 #include <utility>
 #include <vector>
 
+class http2_connection;
 namespace http2 {
+
+/* Implemented externally, libhttp2 internal call this interface to send tcp data */
+class SendService {
+public:
+    virtual ~SendService() {}
+
+    //
+    // cid:  cid refers to the connection id, managed by the external network module
+    // buf:  buf refers to the data pointer to be sent
+    // size: size refers to the length of the data to be sent
+    virtual bool SendRawData(uint64_t cid, const uint8_t *buf, uint32_t size);
+};
+
 // SETTINGS
 /**
  * HTTP2_SETTINGS_HEADER_TABLE_SIZE:
@@ -118,30 +132,18 @@ public:
     virtual void PopDataBlock(uint8_t *output, uint32_t size) = 0;
 };
 
-/* Implemented externally, libhttp2 internal call this interface to send tcp data */
-class SendService {
+class FrameEventHandler {
 public:
-    virtual ~SendService() {}
+    virtual ~FrameEventHandler() {}
 
-    //
-    // cid:  cid refers to the connection id, managed by the external network module
-    // buf:  buf refers to the data pointer to be sent
-    // size: size refers to the length of the data to be sent
-    virtual bool SendRawData(uint64_t cid, const uint8_t *buf, uint32_t size);
-};
-
-class EventHandler {
-public:
-    virtual ~EventHandler() {}
-
-    virtual void OnData(Stream *stream) = 0;  // FRAME_DATA
+    virtual void OnData(std::shared_ptr<Stream> stream) = 0;  // FRAME_DATA
 
     // if PUSH_PROMISE frame, promise = true
-    virtual void OnHeaders(Stream *stream, bool promise) = 0;  // FRAME_HEADERS
+    virtual void OnHeaders(std::shared_ptr<Stream> stream, bool promise) = 0;  // FRAME_HEADERS
 
-    virtual void OnPriority(Stream *stream);
+    virtual void OnPriority(std::shared_ptr<Stream> stream);
 
-    virtual void OnRSTStream(Stream *stream) = 0;  // FRAME_RST_STREAM
+    virtual void OnRSTStream(std::shared_ptr<Stream> stream) = 0;  // FRAME_RST_STREAM
 
     virtual void OnSettings(uint64_t cid, uint16_t id, uint32_t value,
                             bool ack) = 0;  // FRAME_SETTINGS
@@ -150,12 +152,11 @@ public:
 
     virtual void OnGoAway(uint64_t cid, uint32_t last_stream_id, uint32_t error_code,
                           const std::string &debug) = 0;  // FRAME_GOAWAY
-
-    virtual void OnWindowUpdate(uint64_t cid, uint32_t stream_id,
-                                uint32_t window_update_siz) = 0;  // FRAME_WINDOW_UPDATE
 };
 
 class Request final {
+    friend class ::http2_connection;
+
 public:
     Request();
     ~Request();
@@ -173,6 +174,8 @@ private:
 };
 
 class Response final {
+    friend class ::http2_connection;
+
 public:
     Response();
     ~Response();
@@ -191,27 +194,43 @@ private:
     bool finish_;
 };
 
+typedef struct {
+    uint32_t connection_window_size_increment = 0;
+    uint32_t stream_window_size_increment = 0;
+} WindowUpdate;
+
+class FlowControlHandler {
+public:
+    virtual ~FlowControlHandler() {}
+    virtual WindowUpdate OnDataReceived(uint64_t cid, uint32_t stream_id, uint32_t recv_bytes) = 0;
+    virtual void OnWindowUpdate(uint64_t cid, uint32_t stream_id, uint32_t window_update_size) = 0;
+    virtual WindowUpdate OnPreSendData(uint64_t cid, uint32_t stream_id, uint32_t send_bytes) = 0;
+};
+
 class Transport {
 public:
     virtual ~Transport() {}
 
+    virtual void SetFlowControlHandler(FlowControlHandler *handler) = 0;
+    virtual void SetFrameEventHandler(FrameEventHandler *handler) = 0;
+
     virtual uint64_t GetConnectionId() = 0;
     virtual bool IsClientSide() = 0;
 
-    virtual void SendPing(uint64_t info) = 0;
-    virtual void SendSettings(const std::vector<std::pair<uint16_t, uint32_t>> &settings) = 0;
-    virtual void SendPriority(uint32_t stream_id, uint8_t weight, uint32_t depend_stream_id) = 0;
+    virtual bool SendPing(uint64_t info) = 0;
+    virtual bool SendSettings(const std::vector<std::pair<uint16_t, uint32_t>> &settings) = 0;
+    virtual bool SendPriority(uint32_t stream_id, uint8_t weight, uint32_t depend_stream_id) = 0;
 
-    virtual void SendRSTStream(uint32_t stream_id, uint32_t error_code) = 0;
+    virtual bool SendRSTStream(uint32_t stream_id, uint32_t error_code) = 0;
     virtual void SendGoAway(uint32_t last_stream_id, uint32_t error_code, const std::string &debug) = 0;
-    virtual void SendWindowUpdate(uint32_t stream_id, uint32_t window_update_size) = 0;
+    virtual bool SendWindowUpdate(uint32_t stream_id, WindowUpdate *wu) = 0;
 
     virtual bool SendRequest(Request *req) = 0;
     virtual bool SendResponse(Response *rsp) = 0;
 
     // if initlize_headers not null, send PUSH_PROMISE
     // else just allocate local stream id
-    virtual uint32_t CreateStream(std::vector<std::pair<std::string, std::string>> *initlize_headers) = 0;
+    virtual uint32_t CreateStream(std::vector<std::pair<std::string, std::string>> *promise_headers) = 0;
 
     /*
      * Return -1 means an error occurred, return 0 means still need to provide
@@ -231,7 +250,9 @@ public:
     virtual void Shutdown() = 0;
 };
 
-Transport *CreateTransport(uint64_t connection_id, bool client_side, EventHandler *handler, SendService *service);
+// If client_side is false, means the connection comes from API accept.
+// If client_side is true, means the connection comes from API connect.
+Transport *CreateTransport(uint64_t connection_id, bool client_side, SendService *service);
 void DestroyTransport(Transport *transport);
 
 enum LobLevel { kDebug = 0, kInfo = 1, kWarn = 2, kError = 3 };

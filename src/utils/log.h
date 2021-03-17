@@ -27,3 +27,11 @@ void LogSetPrintFunction(log_print_func callback);
 #define log_info(FMT, ...) LogFormatPrint(__FILE__, __LINE__, kInfoLevel, FMT, ##__VA_ARGS__)
 #define log_warn(FMT, ...) LogFormatPrint(__FILE__, __LINE__, kWarnLevel, FMT, ##__VA_ARGS__)
 #define log_error(FMT, ...) LogFormatPrint(__FILE__, __LINE__, kErrorLevel, FMT, ##__VA_ARGS__)
+
+#define LOG_ASSERT(x)                                                                              \
+    do {                                                                                           \
+        if (RAPTOR_LIKELY(!(x))) {                                                                 \
+            log_error("assertion failed: %s", #x);                                                 \
+            abort();                                                                               \
+        }                                                                                          \
+    } while (0)

@@ -187,23 +187,8 @@ static slice hpack_encode_header(compressor *c, mdelem_data mdel, bool use_true_
     }
 }
 
-void compressor_encode_headers(compressor *c, const std::vector<mdelem_data> *extra_headers,
-                               const std::vector<mdelem_data> *metadata, slice_buffer *output,
-                               bool use_true_binary_metadata) {
-    if (extra_headers) {
-        for (size_t i = 0; i < extra_headers->size(); i++) {
-            const mdelem_data &md = extra_headers->at(i);
-            uint32_t index = full_match_static_mdelem_index(md);
-            if (index != 0) {
-                slice s = encode_index(index);
-                output->add_slice(s);
-            } else {
-                slice s = hpack_encode_header(c, md, use_true_binary_metadata);
-                output->add_slice(s);
-            }
-        }
-    }
-
+void compressor_encode_headers(compressor *c, const std::vector<mdelem_data> *metadata,
+                               slice_buffer *output, bool use_true_binary_metadata) {
     if (metadata) {
         for (size_t i = 0; i < metadata->size(); i++) {
             const mdelem_data &md = metadata->at(i);

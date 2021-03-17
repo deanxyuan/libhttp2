@@ -6,17 +6,18 @@
 #include <string>
 
 class slice_refcount;
-class slice {
+class slice final {
 public:
-    slice(const void *ptr, size_t length);
+    slice();
+    slice(const char *ptr);
     slice(const std::string &str);
-    slice(const char *str);
+    slice(const void *ptr, size_t length);
+    slice(void *ptr, size_t length);
+    slice(const char *ptr, size_t length);
+    ~slice();
 
     slice(const slice &oth);
     slice &operator=(const slice &oth);
-
-    slice();
-    virtual ~slice();
 
     slice(slice &&oth);
     slice &operator=(slice &&oth);
@@ -36,6 +37,8 @@ public:
     bool operator!=(const slice &&oth) const {
         return !(this->operator==(oth));
     }
+
+    slice &operator+=(const slice &s);
 
 private:
     enum { SLICE_INLINED_SIZE = 23 };
