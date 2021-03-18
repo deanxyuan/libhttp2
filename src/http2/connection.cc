@@ -249,7 +249,7 @@ bool http2_connection::send_settings(const std::vector<std::pair<uint16_t, uint3
         _request_settings.push_back(settings[i]);
     }
 
-    http2_frame_settings frame = build_http2_frame_settings(0, vse);
+    http2_frame_settings frame = build_http2_frame_settings(0, &vse);
     send_http2_frame(&frame);
     return true;
 }
@@ -268,11 +268,11 @@ bool http2_connection::send_priority(uint32_t stream_id, uint8_t weight,
     http2_priority_spec spec;
     spec.exclusive = 0;
     spec.weight = weight;
-    spec.stream_id = depend_stream_id;
+    spec.depend_stream_id = depend_stream_id;
 
     stream->set_priority_info(&spec);
 
-    http2_frame_priority frame = build_http2_frame_priority(&spec);
+    http2_frame_priority frame = build_http2_frame_priority(stream_id, 0, spec);
     send_http2_frame(&frame);
     return true;
 }
@@ -280,7 +280,7 @@ bool http2_connection::send_priority(uint32_t stream_id, uint8_t weight,
 bool http2_connection::send_rst_stream(uint32_t stream_id, uint32_t error_code) {
     auto stream = find_stream(stream_id);
     if (!stream) return false;
-    http2_frame_rst_stream frame = build_http2_frame_rst_stream(error_code);
+    http2_frame_rst_stream frame = build_http2_frame_rst_stream(stream_id, 0, error_code);
     send_http2_frame(&frame);
     stream->send_rst_stream();
     if (stream->is_closed()) {
@@ -403,8 +403,8 @@ http2_connection::send_push_promise(std::vector<std::pair<std::string, std::stri
     hpack::compressor_encode_headers(&_send_record, &mdels, &header_block_fragment,
                                      use_true_binary_metadata);
 
-    http2_frame_push_promise frame =
-        build_http2_frame_push_promise(stream_id, &header_block_fragment);
+    http2_frame_push_promise frame = build_http2_frame_push_promise(
+        stream_id, HTTP2_FLAG_END_HEADERS, header_block_fragment.merge());
     send_http2_frame(&frame);
     return stream_id;
 }
@@ -423,8 +423,8 @@ void http2_connection::send_binary_in_headers_frame(
     hpack::compressor_encode_headers(&_send_record, &mdels, &header_block_fragment,
                                      use_true_binary_metadata);
 
-    http2_frame_headers frame =
-        build_http2_frame_headers(stream->stream_id(), &header_block_fragment, flags);
+    http2_frame_headers frame = build_http2_frame_headers(stream->stream_id(), flags,
+                                                          header_block_fragment.merge(), nullptr);
     send_http2_frame(&frame);
 }
 
@@ -441,7 +441,7 @@ void http2_connection::send_binary_in_data_frame(std::shared_ptr<http2_stream> &
                 _flow_control->OnPreSendData(_connection_id, stream->stream_id(), data.size());
             send_window_update(stream->stream_id(), &wu);
         }
-        http2_frame_data frame = build_http2_frame_data(stream->stream_id(), data, 0);
+        http2_frame_data frame = build_http2_frame_data(stream->stream_id(), 0, data);
         send_http2_frame(&frame);
     }
 
@@ -452,7 +452,7 @@ void http2_connection::send_binary_in_data_frame(std::shared_ptr<http2_stream> &
         send_window_update(stream->stream_id(), &wu);
     }
     int flags = end_of_stream ? HTTP2_FLAG_END_STREAM : 0;
-    http2_frame_data frame = build_http2_frame_data(stream->stream_id(), data, flags);
+    http2_frame_data frame = build_http2_frame_data(stream->stream_id(), flags, data);
     send_http2_frame(&frame);
 }
 
@@ -576,7 +576,7 @@ void http2_connection::received_priority(std::shared_ptr<http2_stream> &stream,
     }
 
     // A stream cannot depend on itself
-    if (frame->hdr.stream_id == frame->pspec.stream_id) {
+    if (frame->hdr.stream_id == frame->pspec.depend_stream_id) {
         send_goaway(HTTP2_PROTOCOL_ERROR);
         return;
     }
@@ -642,7 +642,7 @@ void http2_connection::received_settings(http2_frame_settings *frame) {
         _event_handler->OnSettings(_connection_id, setting.id, setting.value, false);
     }
 
-    http2_frame_settings settings_ack = build_http2_frame_settings_ack();
+    http2_frame_settings settings_ack = build_http2_frame_settings(HTTP2_FLAG_ACK, nullptr);
     send_http2_frame(&settings_ack);
 }
 

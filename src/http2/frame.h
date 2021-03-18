@@ -1,7 +1,7 @@
 #pragma once
 #include <stdint.h>
 #include <vector>
-#include <type_traits>
+
 #include "src/utils/slice.h"
 
 typedef enum {
@@ -117,7 +117,7 @@ typedef struct {
 
 // Follow the PRIORITY flag to exist
 typedef struct {
-    uint32_t stream_id;
+    uint32_t depend_stream_id;
     uint16_t weight;
     uint8_t exclusive;
 } http2_priority_spec;
@@ -188,14 +188,13 @@ void http2_frame_header_pack(uint8_t *out, const http2_frame_hdr *hd);
 void http2_frame_header_unpack(http2_frame_hdr *hd, const uint8_t *input);
 void http2_frame_header_init(http2_frame_hdr *hd, size_t length, uint8_t type, uint8_t flags, uint32_t stream_id);
 
-http2_frame_settings build_http2_frame_settings(int flag, std::vector<http2_settings_entry> &settings);
-http2_frame_settings build_http2_frame_settings_ack();
-http2_frame_ping build_http2_frame_ping(uint8_t payload[8], bool ack);
-http2_frame_goaway build_http2_frame_goaway(uint32_t error_code, uint32_t last_stream_id, slice debug);
+http2_frame_settings build_http2_frame_settings(int flags, std::vector<http2_settings_entry> *settings);
+http2_frame_ping build_http2_frame_ping(uint8_t *data, bool ack);
+http2_frame_goaway build_http2_frame_goaway(uint32_t last_stream_id, uint32_t error_code, const slice &debug);
 http2_frame_window_update build_http2_frame_window_update(uint32_t stream_id, uint32_t window_size_inc);
-// TODO
-http2_frame_data build_http2_frame_data(uint32_t stream_id, const slice &data, int flags);
-http2_frame_headers build_http2_frame_headers(uint32_t stream_id, slice_buffer *header_block_fragment, int flags);
-http2_frame_push_promise build_http2_frame_push_promise(uint32_t stream_id, slice_buffer *header_block_fragment);
-http2_frame_rst_stream build_http2_frame_rst_stream(uint32_t error_code);
-http2_frame_priority build_http2_frame_priority(http2_priority_spec *spec);
+http2_frame_data build_http2_frame_data(uint32_t stream_id, int flags, const slice &data);
+http2_frame_headers build_http2_frame_headers(uint32_t stream_id, int flags, const slice &header_block,
+                                              http2_priority_spec *spec);
+http2_frame_push_promise build_http2_frame_push_promise(uint32_t stream_id, int flags, const slice &header_block);
+http2_frame_rst_stream build_http2_frame_rst_stream(uint32_t stream_id, int flags, uint32_t error_code);
+http2_frame_priority build_http2_frame_priority(uint32_t stream_id, int flags, const http2_priority_spec &spec);

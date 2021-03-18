@@ -1,6 +1,5 @@
 #include "src/http2/parser.h"
 #include <string.h>
-#include "src/http2/settings.h"
 #include "src/http2/errors.h"
 #include "src/utils/byte_order.h"
 #include "src/utils/slice.h"
@@ -83,7 +82,7 @@ int parse_http2_frame_headers(http2_frame_hdr *hdr, const uint8_t *input, http2_
         payload_length -= 4 + 1;
     }
 
-    frame->pspec.stream_id = dep_stream_id;
+    frame->pspec.depend_stream_id = dep_stream_id;
     frame->pspec.weight = weight;
     frame->pspec.exclusive = exclusive;
     frame->header_block_fragment = MakeStaticSlice(payload, payload_length);
@@ -103,7 +102,7 @@ int parse_http2_frame_priority(http2_frame_hdr *hdr, const uint8_t *input, http2
     frame->hdr = *hdr;
 
     if (frame->hdr.length == 5) {
-        frame->pspec.stream_id = get_uint32_from_be_stream(input) & HTTP2_STREAM_ID_MASK;
+        frame->pspec.depend_stream_id = get_uint32_from_be_stream(input) & HTTP2_STREAM_ID_MASK;
         frame->pspec.exclusive = (input[0] & 0x80) != 0;
         frame->pspec.weight = input[4] + 1;  // 1-256
     }
