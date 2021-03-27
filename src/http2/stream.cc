@@ -37,6 +37,7 @@
 */
 
 #include "src/http2/stream.h"
+#include <assert.h>
 #include "src/http2/frame.h"
 
 enum http2_stream_event {
@@ -52,87 +53,177 @@ enum http2_stream_event {
     _STREAM_EVENT_COUNTER
 };
 
-const http2_stream::State event_status_table[static_cast<int>(
-    _STREAM_EVENT_COUNTER)][static_cast<int>(http2_stream::ERROR)] = {
-    {http2_stream::OPEN, http2_stream::ERROR, http2_stream::HALF_CLOSED_LOCAL, http2_stream::ERROR,
-     http2_stream::ERROR, http2_stream::ERROR, http2_stream::ERROR},
-    {http2_stream::OPEN, http2_stream::HALF_CLOSED_REMOTE, http2_stream::ERROR, http2_stream::ERROR,
-     http2_stream::ERROR, http2_stream::ERROR, http2_stream::ERROR},
-    {http2_stream::RESERVED_REMOTE, http2_stream::ERROR, http2_stream::ERROR, http2_stream::ERROR,
-     http2_stream::ERROR, http2_stream::ERROR, http2_stream::ERROR},
-    {http2_stream::RESERVED_LOCAL, http2_stream::ERROR, http2_stream::ERROR, http2_stream::ERROR,
-     http2_stream::ERROR, http2_stream::ERROR, http2_stream::ERROR},
-    {http2_stream::ERROR, http2_stream::ERROR, http2_stream::ERROR,
-     http2_stream::HALF_CLOSED_REMOTE, http2_stream::CLOSED, http2_stream::ERROR,
-     http2_stream::ERROR},
-    {http2_stream::ERROR, http2_stream::ERROR, http2_stream::ERROR, http2_stream::HALF_CLOSED_LOCAL,
-     http2_stream::ERROR, http2_stream::CLOSED, http2_stream::ERROR},
-    {http2_stream::ERROR, http2_stream::CLOSED, http2_stream::CLOSED, http2_stream::CLOSED,
-     http2_stream::CLOSED, http2_stream::CLOSED, http2_stream::ERROR},
-    {http2_stream::ERROR, http2_stream::CLOSED, http2_stream::CLOSED, http2_stream::CLOSED,
-     http2_stream::CLOSED, http2_stream::CLOSED, http2_stream::ERROR},
+namespace internal {
+constexpr int kIdle = HTTP2_STREAM_IDLE;
+constexpr int kReservedLocal = HTTP2_STREAM_RESERVED_LOCAL;
+constexpr int kReservedRemote = HTTP2_STREAM_RESERVED_LOCAL;
+constexpr int kOpen = HTTP2_STREAM_OPEN;
+constexpr int kHalfClosedLocal = HTTP2_STREAM_HALF_CLOSED_LOCAL;
+constexpr int kHalfClosedRemote = HTTP2_STREAM_HALF_CLOSED_REMOTE;
+constexpr int kClosed = HTTP2_STREAM_CLOSED;
+constexpr int kDoNotUse = kClosed + 1;
+}  // namespace internal
+
+const int event_status_table[8][internal::kDoNotUse] = {
+    {
+        // Recv HEADERS Frame
+        internal::kOpen,             // when kIdle
+        internal::kDoNotUse,         // when kReservedLocal
+        internal::kHalfClosedLocal,  // when kReservedRemote
+        internal::kDoNotUse,         // when kOpen
+        internal::kDoNotUse,         // when kHalfClosedLocal
+        internal::kDoNotUse,         // when kHalfClosedRemote
+        internal::kDoNotUse          // when kClosed
+    },
+    {
+        // Send HEADERS Frame
+        internal::kOpen,              // when kIdle
+        internal::kHalfClosedRemote,  // when kReservedLocal
+        internal::kDoNotUse,          // when kReservedRemote
+        internal::kDoNotUse,          // when kOpen
+        internal::kDoNotUse,          // when kHalfClosedLocal
+        internal::kDoNotUse,          // when kHalfClosedRemote
+        internal::kDoNotUse           // when kClosed
+    },
+    {
+        // Recv PUSH_PROMISE
+        internal::kHalfClosedRemote,  // when kIdle
+        internal::kDoNotUse,          // when kReservedLocal
+        internal::kDoNotUse,          // when kReservedRemote
+        internal::kDoNotUse,          // when kOpen
+        internal::kDoNotUse,          // when kHalfClosedLocal
+        internal::kDoNotUse,          // when kHalfClosedRemote
+        internal::kDoNotUse           // when kClosed
+    },
+    {
+        // Send PUSH_PROMISE
+        internal::kReservedLocal,  // when kIdle
+        internal::kDoNotUse,       // when kReservedLocal
+        internal::kDoNotUse,       // when kReservedRemote
+        internal::kDoNotUse,       // when kOpen
+        internal::kDoNotUse,       // when kHalfClosedLocal
+        internal::kDoNotUse,       // when kHalfClosedRemote
+        internal::kDoNotUse        // when kClosed
+    },
+    {
+        // Recv END_STREAM
+        internal::kDoNotUse,          // when kIdle
+        internal::kDoNotUse,          // when kReservedLocal
+        internal::kDoNotUse,          // when kReservedRemote
+        internal::kHalfClosedRemote,  // when kOpen
+        internal::kClosed,            // when kHalfClosedLocal
+        internal::kDoNotUse,          // when kHalfClosedRemote
+        internal::kDoNotUse           // when kClosed
+    },
+    {
+        // Send END_STREAM
+        internal::kDoNotUse,         // when kIdle
+        internal::kDoNotUse,         // when kReservedLocal
+        internal::kDoNotUse,         // when kReservedRemote
+        internal::kHalfClosedLocal,  // when kOpen
+        internal::kDoNotUse,         // when kHalfClosedLocal
+        internal::kClosed,           // when kHalfClosedRemote
+        internal::kDoNotUse          // when kClosed
+    },
+    {
+        // Recv RST_STREAM
+        internal::kDoNotUse,  // when kIdle
+        internal::kClosed,    // when kReservedLocal
+        internal::kClosed,    // when kReservedRemote
+        internal::kClosed,    // when kOpen
+        internal::kClosed,    // when kHalfClosedLocal
+        internal::kClosed,    // when kHalfClosedRemote
+        internal::kDoNotUse   // when kClosed
+    },
+    {
+        // Send RST_STREAM
+        internal::kDoNotUse,  // when kIdle
+        internal::kClosed,    // when kReservedLocal
+        internal::kClosed,    // when kReservedRemote
+        internal::kClosed,    // when kOpen
+        internal::kClosed,    // when kHalfClosedLocal
+        internal::kClosed,    // when kHalfClosedRemote
+        internal::kDoNotUse   // when kClosed
+    },
 };
 
-http2_stream::State get_next_status(http2_stream_event event, http2_stream::State status) {
-    return event_status_table[event][status];
+static inline int get_next_status(http2_stream_event event, int current) {
+    return event_status_table[static_cast<int>(event)][current];
 }
 
 void http2_stream::send_push_promise() {
-    _state = get_next_status(STREAM_EVENT_PP_S, _state);
-}
-
-void http2_stream::recv_push_promise() {
-    _state = get_next_status(STREAM_EVENT_PP_R, _state);
-}
-
-void http2_stream::send_headers() {
-    _state = get_next_status(STREAM_EVENT_H_S, _state);
-}
-
-void http2_stream::recv_headers(const std::vector<hpack::mdelem_data> &headers) {
-    _finish_header = false;
-    _state = get_next_status(STREAM_EVENT_H_R, _state);
-    _headers.clear();
-    _headers.resize(headers.size());
-    for (size_t i = 0; i < headers.size(); i++) {
-        _headers[i] = headers[i];
+    auto next_state = get_next_status(STREAM_EVENT_PP_S, _state);
+    if (next_state != internal::kDoNotUse) {
+        _state = next_state;
     }
 }
 
+void http2_stream::recv_push_promise() {
+    auto next_state = get_next_status(STREAM_EVENT_PP_R, _state);
+    if (next_state != internal::kDoNotUse) {
+        _state = next_state;
+    }
+}
+
+void http2_stream::send_headers() {
+    auto next_state = get_next_status(STREAM_EVENT_H_S, _state);
+    if (next_state != internal::kDoNotUse) {
+        _state = next_state;
+    }
+}
+
+void http2_stream::recv_headers(std::vector<hpack::mdelem_data> &headers) {
+    auto next_state = get_next_status(STREAM_EVENT_H_R, _state);
+    if (next_state != internal::kDoNotUse) {
+        _state = next_state;
+    }
+    _headers = std::move(headers);
+}
+
 void http2_stream::send_rst_stream() {
-    _state = get_next_status(STREAM_EVENT_RST_S, _state);
+    auto next_state = get_next_status(STREAM_EVENT_RST_S, _state);
+    if (next_state != internal::kDoNotUse) {
+        _state = next_state;
+    }
 }
 
 void http2_stream::recv_rst_stream(uint32_t error_code) {
-    _state = get_next_status(STREAM_EVENT_RST_R, _state);
+    auto next_state = get_next_status(STREAM_EVENT_RST_R, _state);
+    if (next_state != internal::kDoNotUse) {
+        _state = next_state;
+    }
     _last_error = error_code;
 }
 
 void http2_stream::send_end_stream() {
-    _state = get_next_status(STREAM_EVENT_ES_S, _state);
-    _sent_eos = true;
+    auto next_state = get_next_status(STREAM_EVENT_ES_S, _state);
+    if (next_state != internal::kDoNotUse) {
+        _state = next_state;
+    }
+    mark_unwritable();
 }
 
 void http2_stream::recv_end_stream() {
-    _state = get_next_status(STREAM_EVENT_ES_R, _state);
-    _received_eos = true;
+    auto next_state = get_next_status(STREAM_EVENT_ES_R, _state);
+    if (next_state != internal::kDoNotUse) {
+        _state = next_state;
+    }
+    mark_unreadable();
 }
 
 // ---------------------------------
 
-http2_stream::http2_stream(ConnectionFlowControl *cfc, uint32_t stream_id)
-    : _flow_control(stream_id, cfc)
+http2_stream::http2_stream(uint64_t connection_id, uint32_t stream_id)
+    : _connection_id(connection_id)
     , _stream_id(stream_id)
-    , _connection_id(cfc->ConnectionId())
-    , _state(IDLE)
+    , _state(internal::kIdle)
     , _frame_flags(0)
-    , _frame_type(0)
-    , _finish_header(false) {
+    , _frame_type(0) {
     _read_closed = false;
     _write_closed = false;
-    _received_eos = false;
-    _sent_eos = false;
-    _weight = 0;
+    _spec.depend_stream_id = 0;
+    _spec.exclusive = false;
+    _spec.weight = 16;
     _last_error = 0;
 }
 
@@ -144,18 +235,10 @@ uint8_t http2_stream::frame_flags() {
     return _frame_flags;
 }
 
-void http2_stream::frame_type(uint8_t type) {
-    _frame_type = type;
-}
-
-void http2_stream::frame_flags(uint8_t flags) {
-    _frame_flags = flags;
-
-    if (flags & HTTP2_FLAG_END_HEADERS) {
-        _finish_header = true;
-    }
-
-    if (flags & HTTP2_FLAG_END_STREAM) {
+void http2_stream::save_frame_info(http2_frame_hdr *hdr) {
+    _frame_type = hdr->type;
+    _frame_flags = hdr->flags;
+    if (_frame_flags & HTTP2_FLAG_END_STREAM) {
         recv_end_stream();
     }
 }
@@ -172,18 +255,18 @@ void http2_stream::append_data(slice s) {
 }
 
 bool http2_stream::is_closed() const {
-    return _state == State::CLOSED;
+    return _state == internal::kClosed;
 }
 
 uint32_t http2_stream::stream_id() const {
     return _stream_id;
 }
 
-void http2_stream::set_weight(int32_t w) {
-    _weight = w;
+void http2_stream::set_priority_info(http2_priority_spec *info) {
+    _spec = *info;
 }
 
-http2_stream::State http2_stream::get_state() const {
+int http2_stream::get_state() const {
     return _state;
 }
 
@@ -195,30 +278,58 @@ void http2_stream::mark_unreadable() {
     _read_closed = true;
 }
 
-bool http2_stream::try_send_push_promise() {
-    if (_write_closed) return false;
-    auto s = get_next_status(STREAM_EVENT_PP_S, _state);
-    return (s != State::ERROR);
-}
-
-bool http2_stream::try_send_headers() {
-    if (_write_closed) return false;
-    auto s = get_next_status(STREAM_EVENT_H_S, _state);
-    return (s != State::ERROR);
-}
-
-bool http2_stream::try_send_rst_stream() {
-    if (_write_closed) return false;
-    auto s = get_next_status(STREAM_EVENT_RST_S, _state);
-    return (s != State::ERROR);
-}
-
-bool http2_stream::try_send_end_stream() {
-    if (_write_closed) return false;
-    auto s = get_next_status(STREAM_EVENT_ES_S, _state);
-    return (s != State::ERROR);
-}
-
 std::shared_ptr<http2::Stream> http2_stream::get_shared_stream() {
     return shared_from_this();
+}
+
+uint64_t http2_stream::ConnectionId() {
+    return _connection_id;
+}
+
+uint32_t http2_stream::StreamId() {
+    return _stream_id;
+}
+
+int32_t http2_stream::Weight() {
+    return _spec.weight;
+}
+
+bool http2_stream::Exclusive() {
+    return _spec.exclusive;
+}
+
+int32_t http2_stream::Flags() {
+    return _frame_flags;
+}
+
+uint32_t http2_stream::ErrorCode() {
+    return _last_error;
+}
+
+int http2_stream::CurrentState() {
+    return _state;
+}
+
+std::multimap<std::string, std::string> http2_stream::GetHeaders() {
+    std::multimap<std::string, std::string> headers;
+    for (size_t i = 0; i < _headers.size(); i++) {
+        std::string k = _headers[i].key.to_string();
+        std::string v = _headers[i].value.to_string();
+        headers.insert({k, v});
+    }
+    return headers;
+}
+
+uint32_t http2_stream::GetDataBlock(uint32_t (*parse_func)(const uint8_t *ptr, uint32_t len)) {
+    if (parse_func) {
+        slice s = _data_cache.merge();
+        return parse_func(s.data(), s.size());
+    }
+    return static_cast<uint32_t>(_data_cache.get_buffer_length());
+}
+
+void http2_stream::PopDataBlock(uint8_t *output, uint32_t size) {
+    assert(size <= _data_cache.get_buffer_length());
+    _data_cache.copy_to_buffer(output, size);
+    _data_cache.move_header(size);
 }

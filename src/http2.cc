@@ -29,7 +29,7 @@ struct InternalTag {};
 
 class LibraryInitlizer {
 public:
-    explicit LibraryInitlizer(InternalTag t) {
+    explicit LibraryInitlizer(InternalTag) {
         internal_init_library();
     }
     ~LibraryInitlizer() {
@@ -121,7 +121,7 @@ bool TransportAdaptor::SendSettings(const std::vector<std::pair<uint16_t, uint32
 }
 
 bool TransportAdaptor::SendPriority(uint32_t stream_id, uint8_t weight, uint32_t depend_stream_id) {
-    return _impl.send_priority(stream_id, weight, 0);
+    return _impl.send_priority(stream_id, weight, depend_stream_id);
 }
 
 bool TransportAdaptor::SendRSTStream(uint32_t stream_id, uint32_t error_code) {

@@ -7,6 +7,7 @@
 
 #include "src/hpack/metadata.h"
 #include "src/utils/slice_buffer.h"
+#include "src/http2/frame.h"
 
 #include "http2/transport.h"
 
@@ -19,17 +20,11 @@ public:
     void send_push_promise();
     void recv_push_promise();
     void send_headers();
-    void recv_headers(const std::vector<hpack::mdelem_data> &headers);
+    void recv_headers(std::vector<hpack::mdelem_data> &headers);
     void send_rst_stream();
     void recv_rst_stream(uint32_t error_code);
     void send_end_stream();
     void recv_end_stream();
-
-    // test
-    bool try_send_push_promise();
-    bool try_send_headers();
-    bool try_send_rst_stream();
-    bool try_send_end_stream();
 
     uint8_t frame_type();
     uint8_t frame_flags();
@@ -50,23 +45,30 @@ public:
 
     std::shared_ptr<http2::Stream> get_shared_stream();
 
+    uint64_t ConnectionId() override;
+    uint32_t StreamId() override;
+    int32_t Weight() override;  // Priority
+    bool Exclusive() override;  // Priority
+    int32_t Flags() override;
+    uint32_t ErrorCode() override;
+    int CurrentState() override;
+    std::multimap<std::string, std::string> GetHeaders() override;
+    uint32_t GetDataBlock(uint32_t (*parse_func)(const uint8_t *ptr, uint32_t len)) override;
+    void PopDataBlock(uint8_t *output, uint32_t size) override;
+
 private:
     uint64_t _connection_id;
     uint32_t _stream_id;
 
-    int _current_state;
+    int _state;
 
     uint8_t _frame_flags;
     uint8_t _frame_type;
 
-    bool _finish_header;  // END_HEADERS
     bool _read_closed;
     bool _write_closed;
 
-    bool _received_eos;
-    bool _sent_eos;
-
-    int32_t _weight;
+    http2_priority_spec _spec;
 
     uint32_t _last_error;
     slice_buffer _data_cache;

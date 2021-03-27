@@ -195,8 +195,8 @@ private:
 };
 
 typedef struct {
-    uint32_t connection_window_size_increment = 0;
-    uint32_t stream_window_size_increment = 0;
+    uint32_t connection_window_size_increment;
+    uint32_t stream_window_size_increment;
 } WindowUpdate;
 
 class FlowControlHandler {
