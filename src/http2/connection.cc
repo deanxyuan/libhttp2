@@ -1,4 +1,5 @@
 #include "src/http2/connection.h"
+#include <string.h>
 #include "src/http2/stream.h"
 #include "src/http2/errors.h"
 #include "src/http2/frame.h"

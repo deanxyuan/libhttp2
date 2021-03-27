@@ -1,4 +1,5 @@
 #include "http2/transport.h"
+#include <string.h>
 #include "src/http2/connection.h"
 #include "src/http2/errors.h"
 #include "src/hpack/static_metadata.h"
