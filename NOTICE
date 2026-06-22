@@ -1,0 +1,9 @@
+This project includes code derived from the gRPC project (https://github.com/grpc/grpc).
+
+The following files contain code derived from gRPC:
+- src/utils/mpscq.h/cc (lock-free MPSC queue)
+- src/utils/atomic.h (atomic operations)
+- src/utils/slice.h/cc (zero-copy buffer management)
+
+Copyright 2016 gRPC Authors
+Licensed under the Apache License, Version 2.0
