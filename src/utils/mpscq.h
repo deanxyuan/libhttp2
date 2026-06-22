@@ -17,26 +17,53 @@
  *
  */
 
+/**
+ * @file mpscq.h
+ * @brief Lock-free multi-producer single-consumer queue.
+ */
+
 #pragma once
 
 #include "src/utils/atomic.h"
 
-// Multiple producer single consumer queue
-// If you want to use pop in multiple threads, use LockedMessageQueue
+/**
+ * @brief Lock-free multi-producer single-consumer queue.
+ *
+ * Supports concurrent push from multiple threads but restricts pop to a
+ * single consumer thread. Derived from the gRPC implementation.
+ */
 class MultiProducerSingleConsumerQueue final {
 public:
+    /** @brief Intrusive queue node. Embed this in your data structure. */
     struct Node {
-        /* data */
+        /** @brief Pointer to the next node in the queue. */
         Atomic<Node *> next;
     };
-    MultiProducerSingleConsumerQueue();  //: _head{&_stub}, _tail(&_stub){}
+
+    /** @brief Constructor. Initializes the queue with a stub sentinel node. */
+    MultiProducerSingleConsumerQueue();
+
+    /** @brief Destructor. Asserts the queue is empty. */
     ~MultiProducerSingleConsumerQueue();
 
-    // Return true if it's the first element,
-    // otherwise return false;
+    /**
+     * @brief Pushes a node onto the queue (thread-safe for multiple producers).
+     * @param node The node to enqueue.
+     * @return True if this was the first element pushed (useful for wake-up signaling).
+     */
     bool push(Node *node);
 
+    /**
+     * @brief Pops the oldest node from the queue (single consumer only).
+     * @return The dequeued node, or nullptr if the queue is empty.
+     */
     Node *pop();
+
+    /**
+     * @brief Pops the oldest node and reports whether the queue is now empty.
+     * @param empty Output flag set to true if the queue was empty before this pop.
+     * @return The dequeued node, or nullptr if the queue was empty or in a transitional state.
+     */
     Node *PopAndCheckEnd(bool *empty);
 
 private:

@@ -16,19 +16,27 @@
  *
  */
 
+/**
+ * @file mpscq.cc
+ * @brief Implementation of the multi-producer single-consumer queue.
+ */
+
 #include "src/utils/mpscq.h"
 #include <assert.h>
 
+/** @brief Constructor. Sets both newest and oldest pointers to the stub sentinel. */
 MultiProducerSingleConsumerQueue::MultiProducerSingleConsumerQueue()
     : _newest{&_stub}
     , _oldest(&_stub) {}
 
+/** @brief Destructor. Asserts the queue has been drained back to the stub state. */
 MultiProducerSingleConsumerQueue::~MultiProducerSingleConsumerQueue() {
     auto p = _newest.Load();
     assert(p == &_stub);
     assert(_oldest == &_stub);
 }
 
+/** @brief Atomically appends a node to the newest end of the queue. */
 bool MultiProducerSingleConsumerQueue::push(Node *node) {
     // Oldest -> prev -> newest(node) -> null
     node->next.Store(nullptr);
@@ -37,11 +45,13 @@ bool MultiProducerSingleConsumerQueue::push(Node *node) {
     return prev == &_stub;
 }
 
+/** @brief Pops the oldest node, delegating to PopAndCheckEnd. */
 MultiProducerSingleConsumerQueue::Node *MultiProducerSingleConsumerQueue::pop() {
     bool empty = false;
     return PopAndCheckEnd(&empty);
 }
 
+/** @brief Pops the oldest node and reports queue emptiness via the output parameter. */
 MultiProducerSingleConsumerQueue::Node *MultiProducerSingleConsumerQueue::PopAndCheckEnd(bool *empty) {
     Node *tail = _oldest;
     Node *obj = _oldest->next.Load(MemoryOrder::ACQUIRE);

@@ -1,3 +1,8 @@
+/**
+ * @file send_record.cc
+ * @brief HPACK compressor implementation with cuckoo-hash send-record table.
+ */
+
 #include "src/hpack/send_record.h"
 #include <assert.h>
 #include <math.h>
@@ -6,8 +11,6 @@
 
 #include "src/hpack/encode.h"
 #include "src/hpack/static_metadata.h"
-#include "src/utils/log.h"
-
 #define HASH_FRAGMENT_MASK (HPACK_NUM_VALUES - 1)
 #define HASH_FRAGMENT_1(x) ((x)&HASH_FRAGMENT_MASK)
 #define HASH_FRAGMENT_2(x) (((x) >> HPACK_NUM_VALUES_BITS) & HASH_FRAGMENT_MASK)
@@ -20,10 +23,23 @@
 
 namespace hpack {
 
+/**
+ * @brief Check if a hash table slot is empty.
+ * @param hashtable  The send-record hash table.
+ * @param hash_index Index to check.
+ * @return True if the slot contains no entry.
+ */
 static bool TableEmptyAt(const send_record *hashtable, uint32_t hash_index) {
     return (hashtable[hash_index].mdel == mdelem_data());
 }
 
+/**
+ * @brief Check if a hash table slot fully matches a given metadata element.
+ * @param hashtable  The send-record hash table.
+ * @param element    The metadata element to compare against.
+ * @param hash_index Index to check.
+ * @return True if the slot contains an identical key-value pair.
+ */
 static bool FullMatches(const send_record *hashtable, const mdelem_data &element,
                         uint32_t hash_index) {
     return (element == hashtable[hash_index].mdel);
@@ -115,8 +131,7 @@ static void evict_entry(compressor *c) {
     assert(c->tail_remote_index > 0);
     assert(c->table_size >= c->table_elem_size[c->tail_remote_index % c->cap_table_elems]);
     assert(c->table_elems > 0);
-    c->table_size = static_cast<uint16_t>(
-        c->table_size - c->table_elem_size[c->tail_remote_index % c->cap_table_elems]);
+    c->table_size = c->table_size - c->table_elem_size[c->tail_remote_index % c->cap_table_elems];
     c->table_elems--;
 }
 
@@ -143,7 +158,7 @@ static uint32_t prepare_space_for_new_elem(compressor *c, size_t elem_size) {
     }
     assert(c->table_elems < c->max_table_size);
     c->table_elem_size[new_index % c->cap_table_elems] = static_cast<uint16_t>(elem_size);
-    c->table_size = static_cast<uint16_t>(c->table_size + elem_size);
+    c->table_size = c->table_size + elem_size;
     c->table_elems++;
 
     return new_index;
@@ -266,7 +281,6 @@ void compressor_set_max_table_size(compressor *c, uint32_t max_table_size) {
             rebuild_elems(c, new_cap);
         }
     }
-    log_debug("set max table size from encoder to %d", max_table_size);
 }
 
 void compressor_set_max_usable_size(compressor *c, uint32_t max_table_size) {

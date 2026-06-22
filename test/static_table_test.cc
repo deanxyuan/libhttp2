@@ -10,7 +10,7 @@ TEST(StaticMetadataTest, Empty) {
 }
 
 bool check_static_metadata(const hpack::mdelem_data &md, const std::string &key, const std::string &value) {
-    if (md.key.compare(key) && md.value.compare(value)) {
+    if (md.key == key && md.value == value) {
         return true;
     }
     return false;

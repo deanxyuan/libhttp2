@@ -23,6 +23,11 @@
  * WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
+/**
+ * @file huffman.h
+ * @brief HTTP/2 HPACK Huffman coding API (encoding, decoding, and lookup tables).
+ */
+
 #pragma once
 
 #include <stddef.h>
@@ -66,44 +71,57 @@ extern const http2_huff_decode huff_decode_table[][16];
 
 /* Huffman encoding/decoding functions */
 
-/*
- * Counts the required bytes to encode |src| with length |len|.
+/**
+ * @brief Count the number of bytes required to Huffman-encode the given data.
  *
- * This function returns the number of required bytes to encode given
- * data, including padding of prefix of terminal symbol code. This
- * function always succeeds.
+ * This includes padding of the prefix of the terminal symbol code.
+ * This function always succeeds.
+ *
+ * @param src Pointer to the source data.
+ * @param len Length of the source data in bytes.
+ * @return Number of bytes required for the encoded output.
  */
 size_t http2_head_huffman_encode_count(const uint8_t *src, size_t len);
 
-/*
- * Encodes the given data |src| with length |srclen| to the |bufs|.
- * This function expands extra buffers in |bufs| if necessary.
+/**
+ * @brief Huffman-encode the source data into the destination buffer.
  *
- * This function returns the number of bytes that would have been
- * filled in dst.
+ * @param dst    Pointer to the destination buffer.
+ * @param dstlen Size of the destination buffer in bytes.
+ * @param src    Pointer to the source data to encode.
+ * @param srclen Length of the source data in bytes.
+ * @return Number of bytes written to dst, or negative on error.
  */
 int http2_head_huffman_encode(uint8_t *dst, size_t dstlen, const uint8_t *src, size_t srclen);
 
+/**
+ * @brief Initialize a Huffman decoding context to the accepting state.
+ *
+ * @param ctx Pointer to the decoding context to initialize.
+ */
 void http2_head_huffman_decode_context_init(http2_hd_huff_decode_context *ctx);
 
-/*
- * Decodes the given data |src| with length |srclen|.  The |ctx| must
- * be initialized by nghttp2_hd_huff_decode_context_init(). The result
- * will be written to |buf|.  This function assumes that |buf| has the
- * enough room to store the decoded byte string.
+/**
+ * @brief Decode Huffman-encoded data incrementally.
  *
- * The caller must set the |fin| to nonzero if the given input is the
- * final block.
+ * The context must be initialized by http2_head_huffman_decode_context_init().
+ * The caller must set @p fin to nonzero when the given input is the final block.
+ * Assumes @p buf has enough room for the decoded output.
  *
- * This function returns the number of read bytes from the |in|.
- *
- * If this function fails, it returns -1.
+ * @param ctx    Pointer to the Huffman decoding context.
+ * @param buf    Pointer to the output buffer for decoded bytes.
+ * @param src    Pointer to the encoded input data.
+ * @param srclen Length of the encoded input in bytes.
+ * @param fin    Nonzero if this is the final block of input.
+ * @return Number of decoded bytes written, or -1 on failure.
  */
 int32_t http2_head_huffman_decode(http2_hd_huff_decode_context *ctx, uint8_t *buf, const uint8_t *src, size_t srclen,
                                   int fin);
 
-/*
- * http2_hd_huff_decode_failure_state returns nonzero if |ctx|
- * indicates that huffman decoding context is in failure state.
+/**
+ * @brief Check whether the Huffman decoding context is in a failure state.
+ *
+ * @param ctx Pointer to the decoding context.
+ * @return Nonzero if the context indicates a decoding failure, zero otherwise.
  */
 int http2_head_huffman_decode_failure_state(http2_hd_huff_decode_context *ctx);

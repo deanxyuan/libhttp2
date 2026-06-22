@@ -28,6 +28,11 @@
     OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
+/**
+ * @file testutil.h
+ * @brief Lightweight test framework with assertion macros and test registration.
+ */
+
 #pragma once
 
 #include <stdio.h>
@@ -37,26 +42,44 @@
 
 namespace test {
 
-// Run some of the tests registered by the TEST() macro.
-//
-// Returns 0 if all tests pass.
-// Dies or returns a non-zero value if some test fails.
+/**
+ * @brief Runs all tests registered via the TEST() macro.
+ * @return 0 if all tests pass, 1 if any test failed.
+ */
 int RunAllTests();
 
+/** @brief Global failure counter incremented by the Tester destructor on assertion failure. */
+extern int g_test_failures;
+
+/**
+ * @brief Helper class that accumulates assertion results and reports failures on destruction.
+ */
 class Tester {
 public:
+    /**
+     * @brief Constructor. Records the source file and line number for failure reporting.
+     * @param f Source file name (__FILE__).
+     * @param l Source line number (__LINE__).
+     */
     Tester(const char *f, int l)
         : _ok(true)
         , _file(f)
         , _line(l) {}
 
+    /** @brief Destructor. Prints failure details to stderr if any assertion failed. */
     ~Tester() {
         if (!_ok) {
             fprintf(stderr, "%s:%d:%s\n", _file, _line, _ss.str().c_str());
-            exit(1);
+            ++g_test_failures;
         }
     }
 
+    /**
+     * @brief Asserts that a boolean condition is true.
+     * @param b The condition to test.
+     * @param msg A string representation of the condition for failure output.
+     * @return Reference to this Tester for chaining.
+     */
     Tester &Is(bool b, const char *msg) {
         if (!b) {
             _ss << "Assertion failure " << msg;
@@ -65,6 +88,7 @@ public:
         return *this;
     }
 
+    /** @brief Macro that generates a binary comparison assertion method. */
 #define BINARY_OPERATION(name, op)                                                                                     \
     template <typename X, typename Y>                                                                                  \
     Tester &name(const X &x, const Y &y) {                                                                             \
@@ -75,15 +99,20 @@ public:
         return *this;                                                                                                  \
     }
 
-    BINARY_OPERATION(IsEq, ==)
-    BINARY_OPERATION(IsNe, !=)
-    BINARY_OPERATION(IsGe, >=)
-    BINARY_OPERATION(IsGt, >)
-    BINARY_OPERATION(IsLe, <=)
-    BINARY_OPERATION(IsLt, <)
+    BINARY_OPERATION(IsEq, ==)   /**< @brief Asserts x == y. */
+    BINARY_OPERATION(IsNe, !=)   /**< @brief Asserts x != y. */
+    BINARY_OPERATION(IsGe, >=)   /**< @brief Asserts x >= y. */
+    BINARY_OPERATION(IsGt, >)    /**< @brief Asserts x > y. */
+    BINARY_OPERATION(IsLe, <=)   /**< @brief Asserts x <= y. */
+    BINARY_OPERATION(IsLt, <)    /**< @brief Asserts x < y. */
 
 #undef BINARY_OPERATION
 
+    /**
+     * @brief Stream operator for appending diagnostic values to failure messages.
+     * @param value The value to append (only used when the assertion has failed).
+     * @return Reference to this Tester for chaining.
+     */
     template <typename V>
     Tester &operator<<(const V &value) {
         if (!_ok) {
@@ -99,17 +128,31 @@ private:
     std::stringstream _ss;
 };
 
+/** @brief Asserts that condition c is true. */
 #define ASSERT_TRUE(c) ::test::Tester(__FILE__, __LINE__).Is((c), #c)
+/** @brief Asserts that a == b. */
 #define ASSERT_EQ(a, b) ::test::Tester(__FILE__, __LINE__).IsEq((a), (b))
+/** @brief Asserts that a != b. */
 #define ASSERT_NE(a, b) ::test::Tester(__FILE__, __LINE__).IsNe((a), (b))
+/** @brief Asserts that a >= b. */
 #define ASSERT_GE(a, b) ::test::Tester(__FILE__, __LINE__).IsGe((a), (b))
+/** @brief Asserts that a > b. */
 #define ASSERT_GT(a, b) ::test::Tester(__FILE__, __LINE__).IsGt((a), (b))
+/** @brief Asserts that a <= b. */
 #define ASSERT_LE(a, b) ::test::Tester(__FILE__, __LINE__).IsLe((a), (b))
+/** @brief Asserts that a < b. */
 #define ASSERT_LT(a, b) ::test::Tester(__FILE__, __LINE__).IsLt((a), (b))
 
+/** @brief Concatenates two preprocessor tokens (indirection macro). */
 #define TCONCAT(a, b) TCONCAT1(a, b)
+/** @brief Inner token concatenation helper. */
 #define TCONCAT1(a, b) a##b
 
+/**
+ * @brief Defines and registers a test function within a test base class.
+ * @param base The base class name for the test fixture (use the class name or a plain name).
+ * @param name The test name (must be a valid C++ identifier).
+ */
 #define TEST(base, name)                                                                                               \
     class TCONCAT(_Test_, name)                                                                                        \
         : public base {                                                                                                \
@@ -123,8 +166,13 @@ private:
     bool TCONCAT(_Test_ignored_, name) = ::test::RegisterTest(#base, #name, &TCONCAT(_Test_, name)::_RunIt);           \
     void TCONCAT(_Test_, name)::_Run()
 
-// Register the specified test.  Typically not used directly, but
-// invoked via the macro expansion of TEST.
+/**
+ * @brief Registers a test function with the test framework.
+ * @param base The base class / test suite name.
+ * @param name The individual test name.
+ * @param func Pointer to the test function.
+ * @return Always returns true (used for static initialization).
+ */
 bool RegisterTest(const char *base, const char *name, void (*func)());
 
 }  // namespace test

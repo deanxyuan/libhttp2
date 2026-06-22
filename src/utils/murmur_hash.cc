@@ -16,12 +16,19 @@
  *
  */
 
+/**
+ * @file murmur_hash.cc
+ * @brief Implementation of the MurmurHash3 (32-bit) hash algorithm.
+ */
+
 #include "src/utils/murmur_hash.h"
 
 #include <string.h>
 
+/** @brief Rotates a 32-bit value left by r bits. */
 #define ROTL32(x, r) ((x) << (r)) | ((x) >> (32 - (r)))
 
+/** @brief Finalization mix function for MurmurHash3 (fmix32). */
 #define FMIX32(h)                                                                                                      \
     (h) ^= (h) >> 16;                                                                                                  \
     (h) *= 0x85ebca6b;                                                                                                 \
@@ -29,6 +36,7 @@
     (h) *= 0xc2b2ae35;                                                                                                 \
     (h) ^= (h) >> 16;
 
+/** @brief Computes a 32-bit MurmurHash3 hash over the input key. */
 uint32_t murmur_hash3(const void *key, size_t len, uint32_t seed) {
     uint32_t h1 = seed;
     uint32_t k1;

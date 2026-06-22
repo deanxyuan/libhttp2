@@ -16,9 +16,20 @@
  *
  */
 
+/**
+ * @file murmur_hash.h
+ * @brief MurmurHash3 (32-bit) hash function declaration.
+ */
+
 #pragma once
 #include <stddef.h>
 #include <stdint.h>
 
-/* compute the hash of key (length len) */
+/**
+ * @brief Computes a 32-bit MurmurHash3 hash of the given key.
+ * @param key Pointer to the data to hash.
+ * @param len Length of the key in bytes.
+ * @param seed Seed value for the hash function.
+ * @return The 32-bit hash value.
+ */
 uint32_t murmur_hash3(const void* key, size_t len, uint32_t seed);

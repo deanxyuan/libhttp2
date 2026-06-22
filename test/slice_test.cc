@@ -34,7 +34,13 @@ TEST(SliceTest, Deque) {
     obj.s2.assign("World");
 
     std::deque<testobject> vs;
+    ASSERT_EQ((int)vs.size(), 0);
     vs.push_back(obj);
+    ASSERT_EQ((int)vs.size(), 1);
+    ASSERT_EQ(vs.front().s1.to_string(), std::string("Hello"));
+    ASSERT_EQ(vs.front().s2.to_string(), std::string("World"));
+    vs.push_back(obj);
+    ASSERT_EQ((int)vs.size(), 2);
 }
 
 TEST(SliceTest, SliceBuffer) {

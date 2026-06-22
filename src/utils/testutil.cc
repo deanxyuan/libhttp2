@@ -28,19 +28,35 @@
     OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
+/**
+ * @file testutil.cc
+ * @brief Implementation of the lightweight test framework.
+ */
+
 #include "src/utils/testutil.h"
 #include <vector>
 
 namespace test {
+
+/** @brief Global counter for assertion failures across all tests. */
+int g_test_failures = 0;
+
 namespace {
+/**
+ * @brief Internal struct holding a registered test's metadata and function pointer.
+ */
 struct Test {
-    const char *base;
-    const char *name;
-    void (*func)();
+    const char *base;  /**< Test suite / base class name. */
+    const char *name;  /**< Individual test name. */
+    void (*func)();    /**< Pointer to the test function. */
 };
+/** @brief Global vector of registered tests (lazily allocated). */
 std::vector<Test> *tests;
 }  // namespace
 
+/**
+ * @brief Registers a test function with the test framework.
+ */
 bool RegisterTest(const char *base, const char *name, void (*func)()) {
     if (tests == nullptr) {
         tests = new std::vector<Test>;
@@ -53,6 +69,7 @@ bool RegisterTest(const char *base, const char *name, void (*func)()) {
     return true;
 }
 
+/** @brief Executes all registered tests and prints a summary to stderr. */
 int RunAllTests() {
     int num = 0;
     if (tests != nullptr) {
@@ -63,8 +80,12 @@ int RunAllTests() {
             ++num;
         }
     }
-    fprintf(stderr, "==== PASSED %d tests\n", num);
-    return 0;
+    if (g_test_failures > 0) {
+        fprintf(stderr, "==== FAILED %d assertions across %d tests\n", g_test_failures, num);
+    } else {
+        fprintf(stderr, "==== PASSED %d tests\n", num);
+    }
+    return g_test_failures > 0 ? 1 : 0;
 }
 
 }  // namespace test

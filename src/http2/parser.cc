@@ -1,9 +1,17 @@
+/** @file parser.cc
+ *  @brief HTTP/2 frame payload parser implementations.
+ *
+ *  Each function extracts frame-type-specific fields from raw payload bytes
+ *  into the corresponding frame struct. Frame format diagrams from RFC 7540
+ *  are included as inline block comments for reference.
+ */
 #include "src/http2/parser.h"
 #include <string.h>
 #include "src/http2/errors.h"
 #include "src/utils/byte_order.h"
 #include "src/utils/slice.h"
 
+/** @brief Parse a DATA frame payload (RFC 7540, Section 6.1). */
 int parse_http2_frame_data(http2_frame_hdr *hdr, const uint8_t *input, http2_frame_data *frame) {
     /*
         +---------------+
@@ -21,7 +29,7 @@ int parse_http2_frame_data(http2_frame_hdr *hdr, const uint8_t *input, http2_fra
     int data_size = 0;
 
     uint8_t pad_length = 0;
-    if (frame->hdr.flags & HTTP2_FLAG_PADDED) {
+    if (frame->hdr.flags & static_cast<uint8_t>(Http2FrameFlag::Padded)) {
         pad_length = input[0];
         data = input + 1;
         data_size = frame->hdr.length - pad_length - 1;  // 1 bytes pad length
@@ -33,9 +41,10 @@ int parse_http2_frame_data(http2_frame_hdr *hdr, const uint8_t *input, http2_fra
     frame->data = MakeStaticSlice(data, data_size);
     frame->pad_len = pad_length;
 
-    return HTTP2_NO_ERROR;
+    return static_cast<int>(Http2ErrorCode::NoError);
 }
 
+/** @brief Parse a HEADERS frame payload (RFC 7540, Section 6.2). */
 int parse_http2_frame_headers(http2_frame_hdr *hdr, const uint8_t *input, http2_frame_headers *frame) {
     /*
         +---------------+
@@ -57,7 +66,7 @@ int parse_http2_frame_headers(http2_frame_hdr *hdr, const uint8_t *input, http2_
     size_t payload_length = 0;
     uint8_t pad_length = 0;
 
-    if (frame->hdr.flags & HTTP2_FLAG_PADDED) {
+    if (frame->hdr.flags & static_cast<uint8_t>(Http2FrameFlag::Padded)) {
         pad_length = input[0];
         payload = input + 1;
         payload_length = frame->hdr.length - pad_length - 1;
@@ -73,7 +82,7 @@ int parse_http2_frame_headers(http2_frame_hdr *hdr, const uint8_t *input, http2_
     uint8_t exclusive = 0;
     int32_t weight = 0;
 
-    if (frame->hdr.flags & HTTP2_FLAG_PRIORITY) {
+    if (frame->hdr.flags & static_cast<uint8_t>(Http2FrameFlag::Priority)) {
         dep_stream_id = get_uint32_from_be_stream(payload) & HTTP2_STREAM_ID_MASK;
         exclusive = (payload[0] & 0x80) != 0;
         weight = payload[4] + 1;  // 1-256
@@ -87,9 +96,10 @@ int parse_http2_frame_headers(http2_frame_hdr *hdr, const uint8_t *input, http2_
     frame->pspec.exclusive = exclusive;
     frame->header_block_fragment = MakeStaticSlice(payload, payload_length);
 
-    return HTTP2_NO_ERROR;
+    return static_cast<int>(Http2ErrorCode::NoError);
 }
 
+/** @brief Parse a PRIORITY frame payload (RFC 7540, Section 6.3). */
 int parse_http2_frame_priority(http2_frame_hdr *hdr, const uint8_t *input, http2_frame_priority *frame) {
     /*
         +-+-------------------------------------------------------------+
@@ -106,9 +116,10 @@ int parse_http2_frame_priority(http2_frame_hdr *hdr, const uint8_t *input, http2
         frame->pspec.exclusive = (input[0] & 0x80) != 0;
         frame->pspec.weight = input[4] + 1;  // 1-256
     }
-    return HTTP2_NO_ERROR;
+    return static_cast<int>(Http2ErrorCode::NoError);
 }
 
+/** @brief Parse a RST_STREAM frame payload (RFC 7540, Section 6.4). */
 int parse_http2_frame_rst_stream(http2_frame_hdr *hdr, const uint8_t *input, http2_frame_rst_stream *frame) {
     /*
         +---------------------------------------------------------------+
@@ -121,9 +132,10 @@ int parse_http2_frame_rst_stream(http2_frame_hdr *hdr, const uint8_t *input, htt
         frame->error_code = get_uint32_from_be_stream(input);
     }
 
-    return HTTP2_NO_ERROR;
+    return static_cast<int>(Http2ErrorCode::NoError);
 }
 
+/** @brief Parse a SETTINGS frame payload (RFC 7540, Section 6.5). */
 int parse_http2_frame_settings(http2_frame_hdr *hdr, const uint8_t *input, http2_frame_settings *frame) {
     /*
         +-------------------------------+
@@ -151,9 +163,10 @@ int parse_http2_frame_settings(http2_frame_hdr *hdr, const uint8_t *input, http2
         }
     }
 
-    return HTTP2_NO_ERROR;
+    return static_cast<int>(Http2ErrorCode::NoError);
 }
 
+/** @brief Parse a PUSH_PROMISE frame payload (RFC 7540, Section 6.6). */
 int parse_http2_frame_push_promise(http2_frame_hdr *hdr, const uint8_t *input, http2_frame_push_promise *frame) {
     /*
         +---------------+
@@ -171,7 +184,7 @@ int parse_http2_frame_push_promise(http2_frame_hdr *hdr, const uint8_t *input, h
     uint8_t pad_len = 0;
     const uint8_t *payload = nullptr;
     uint32_t payload_size = 0;
-    if (frame->hdr.flags & HTTP2_FLAG_PADDED) {
+    if (frame->hdr.flags & static_cast<uint8_t>(Http2FrameFlag::Padded)) {
         pad_len = input[0];
         payload = input + 1;
         payload_size = hdr->length - pad_len - 1;
@@ -185,9 +198,10 @@ int parse_http2_frame_push_promise(http2_frame_hdr *hdr, const uint8_t *input, h
     frame->reserved = (payload[0] & 0x80) != 0;
     frame->pad_len = pad_len;
     frame->header_block_fragment = MakeStaticSlice(payload + 4, payload_size - 4);
-    return HTTP2_NO_ERROR;
+    return static_cast<int>(Http2ErrorCode::NoError);
 }
 
+/** @brief Parse a PING frame payload (RFC 7540, Section 6.7). */
 int parse_http2_frame_ping(http2_frame_hdr *hdr, const uint8_t *input, http2_frame_ping *frame) {
     /*
         +---------------------------------------------------------------+
@@ -201,9 +215,10 @@ int parse_http2_frame_ping(http2_frame_hdr *hdr, const uint8_t *input, http2_fra
     if (frame->hdr.length == 8) {
         memcpy(frame->opaque_data, input, 8);
     }
-    return HTTP2_NO_ERROR;
+    return static_cast<int>(Http2ErrorCode::NoError);
 }
 
+/** @brief Parse a GOAWAY frame payload (RFC 7540, Section 6.8). */
 int parse_http2_frame_goaway(http2_frame_hdr *hdr, const uint8_t *input, http2_frame_goaway *frame) {
     /*
         +-+-------------------------------------------------------------+
@@ -221,9 +236,10 @@ int parse_http2_frame_goaway(http2_frame_hdr *hdr, const uint8_t *input, http2_f
     frame->error_code = get_uint32_from_be_stream(input + sizeof(uint32_t));
     frame->debug_data = MakeStaticSlice(input + 8, hdr->length - 8);
 
-    return HTTP2_NO_ERROR;
+    return static_cast<int>(Http2ErrorCode::NoError);
 }
 
+/** @brief Parse a WINDOW_UPDATE frame payload (RFC 7540, Section 6.9). */
 int parse_http2_frame_window_update(http2_frame_hdr *hdr, const uint8_t *input, http2_frame_window_update *frame) {
     /*
         +-+-------------------------------------------------------------+
@@ -236,9 +252,10 @@ int parse_http2_frame_window_update(http2_frame_hdr *hdr, const uint8_t *input, 
         frame->reserved = (input[0] & 0x80) != 0;
         frame->window_size_inc = get_uint32_from_be_stream(input) & HTTP2_STREAM_ID_MASK;
     }
-    return HTTP2_NO_ERROR;
+    return static_cast<int>(Http2ErrorCode::NoError);
 }
 
+/** @brief Parse a CONTINUATION frame payload (RFC 7540, Section 6.10). */
 int parse_http2_frame_continuation(http2_frame_hdr *hdr, const uint8_t *input, http2_frame_continuation *frame) {
     /*
         +---------------------------------------------------------------+
@@ -248,7 +265,7 @@ int parse_http2_frame_continuation(http2_frame_hdr *hdr, const uint8_t *input, h
     */
     frame->hdr = *hdr;
     frame->header_block_fragment = MakeStaticSlice(input, hdr->length);
-    return HTTP2_NO_ERROR;
+    return static_cast<int>(Http2ErrorCode::NoError);
 }
 
 /*

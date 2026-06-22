@@ -1,3 +1,8 @@
+/**
+ * @file static_metadata.cc
+ * @brief HPACK static table initialization and lookup implementations.
+ */
+
 #include "src/hpack/static_metadata.h"
 #include <chrono>
 #include "src/utils/useful.h"
@@ -7,11 +12,23 @@
 
 static uint32_t g_seed = 0;
 
+/**
+ * @brief Compute a MurmurHash3 hash for a slice.
+ * @param s The slice to hash.
+ * @return Hash value.
+ */
 template <typename T>
 static uint32_t get_slice_hash(const T &s) {
     return murmur_hash3(s.data(), s.size(), g_seed);
 }
 
+/**
+ * @brief Compute a combined hash for a metadata element (key + value).
+ *
+ * Initializes the hash seed from the system clock on first call.
+ * @param oth The metadata element to hash.
+ * @return Combined hash value.
+ */
 uint32_t mdelem_data_hash(const hpack::mdelem_data &oth) {
     if (g_seed == 0) {
         auto d = std::chrono::system_clock::now().time_since_epoch();
@@ -24,11 +41,23 @@ uint32_t mdelem_data_hash(const hpack::mdelem_data &oth) {
     uint32_t hash = METADATA_KV_HASH(k_hash, v_hash);
     return hash;
 }
+/**
+ * @brief Compute a hash for a single slice (used for key-only lookups).
+ * @param kv The slice to hash.
+ * @return Hash value.
+ */
 uint32_t mdelem_kv_hash(const slice &kv) {
     return get_slice_hash(kv);
 }
 
 namespace hpack {
+
+/**
+ * @brief Construct a static metadata entry with precomputed hash.
+ * @param key   The header field name.
+ * @param value The header field value.
+ * @param idx   The 1-based index in the static table.
+ */
 static_metadata::static_metadata(const slice &key, const slice &value, uint32_t idx)
     : _kv({key, value})
     , _index(idx) {
@@ -36,14 +65,26 @@ static_metadata::static_metadata(const slice &key, const slice &value, uint32_t 
     _hash = mdelem_data_hash(_kv);
 }
 
+/**
+ * @brief Get the key-value data for this entry.
+ * @return Reference to the mdelem_data.
+ */
 const mdelem_data &static_metadata::data() const {
     return _kv;
 }
 
+/**
+ * @brief Get the precomputed hash of this entry.
+ * @return Hash value.
+ */
 uint32_t static_metadata::hash() const {
     return _hash;
 }
 
+/**
+ * @brief Get the 1-based index of this entry in the static table.
+ * @return Table index.
+ */
 uint32_t static_metadata::index() const {
     return _index;
 }
@@ -148,6 +189,12 @@ static static_metadata_context *g_static_metadata_ctx = nullptr;
 static_metadata *g_static_mdelem_table = nullptr;
 }  // namespace hpack
 
+/**
+ * @brief Initialize the global static metadata context.
+ *
+ * Allocates the static_metadata_context and sets the global table pointer.
+ * Safe to call multiple times; subsequent calls are no-ops.
+ */
 void init_static_metadata_context(void) {
     if (!hpack::g_static_metadata_ctx) {
         hpack::g_static_metadata_ctx = new hpack::static_metadata_context();
@@ -155,6 +202,7 @@ void init_static_metadata_context(void) {
     }
 }
 
+/** @brief Destroy the global static metadata context and free resources. */
 void destroy_static_metadata_context(void) {
     if (hpack::g_static_metadata_ctx) {
         delete hpack::g_static_metadata_ctx;
@@ -163,6 +211,11 @@ void destroy_static_metadata_context(void) {
     }
 }
 
+/**
+ * @brief Find the exact matching entry index in the standard HPACK static table.
+ * @param mdel The metadata element to match.
+ * @return 1-based index if found, 0 if not found.
+ */
 uint32_t full_match_static_mdelem_index(const hpack::mdelem_data &mdel) {
     for (size_t i = 1; i <= HPACK_STATIC_MDELEM_STANDARD_COUNT; i++) {
         if (mdel == hpack::g_static_mdelem_table[i].data()) {
@@ -172,7 +225,16 @@ uint32_t full_match_static_mdelem_index(const hpack::mdelem_data &mdel) {
     return 0;
 }
 
+/**
+ * @brief Check whether a header field name exists in the standard HPACK static table.
+ * @param key The header field name to search for.
+ * @return True if the key exists in the static table.
+ */
 bool check_key_exists(const slice &key) {
-    // TODO
+    for (size_t i = 1; i <= HPACK_STATIC_MDELEM_STANDARD_COUNT; i++) {
+        if (key == hpack::g_static_mdelem_table[i].data().key) {
+            return true;
+        }
+    }
     return false;
 }

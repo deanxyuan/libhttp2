@@ -1,3 +1,8 @@
+/**
+ * @file stream.cc
+ * @brief HTTP/2 stream state machine implementation — transitions, data buffering,
+ *        and the public Stream interface methods.
+ */
 
 /* http2 status migrational table
                                 +--------+
@@ -24,9 +29,9 @@
        |           | send ES /      |       recv ES / |           |
        |           | send R /       v        send R / |           |
        |           | recv R     +--------+   recv R   |           |
-       | send R /  ‘----------->|        |<-----------’  send R / |
+       | send R /  '----------->|        |<-----------'  send R / |
        | recv R                 | closed |               recv R   |
-       ‘----------------------->|        |<----------------------’
+       '----------------------->|        |<----------------------'
                                 +--------+
           send:   endpoint sends this frame
           recv:   endpoint receives this frame
@@ -37,9 +42,11 @@
 */
 
 #include "src/http2/stream.h"
+#include "src/http2/connection.h"
 #include <assert.h>
 #include "src/http2/frame.h"
 
+/** @brief Stream events used for state machine transitions. */
 enum http2_stream_event {
     STREAM_EVENT_H_R = 0,  // HEADERS Frame recv
     STREAM_EVENT_H_S,      // HEADERS Frame send
@@ -54,16 +61,17 @@ enum http2_stream_event {
 };
 
 namespace internal {
-constexpr int kIdle = HTTP2_STREAM_IDLE;
-constexpr int kReservedLocal = HTTP2_STREAM_RESERVED_LOCAL;
-constexpr int kReservedRemote = HTTP2_STREAM_RESERVED_LOCAL;
-constexpr int kOpen = HTTP2_STREAM_OPEN;
-constexpr int kHalfClosedLocal = HTTP2_STREAM_HALF_CLOSED_LOCAL;
-constexpr int kHalfClosedRemote = HTTP2_STREAM_HALF_CLOSED_REMOTE;
-constexpr int kClosed = HTTP2_STREAM_CLOSED;
+constexpr int kIdle = static_cast<int>(Http2StreamState::Idle);
+constexpr int kReservedLocal = static_cast<int>(Http2StreamState::ReservedLocal);
+constexpr int kReservedRemote = static_cast<int>(Http2StreamState::ReservedRemote);
+constexpr int kOpen = static_cast<int>(Http2StreamState::Open);
+constexpr int kHalfClosedLocal = static_cast<int>(Http2StreamState::HalfClosedLocal);
+constexpr int kHalfClosedRemote = static_cast<int>(Http2StreamState::HalfClosedRemote);
+constexpr int kClosed = static_cast<int>(Http2StreamState::Closed);
 constexpr int kDoNotUse = kClosed + 1;
 }  // namespace internal
 
+/** @brief State transition table: event_status_table[event][current_state] = next_state. */
 const int event_status_table[8][internal::kDoNotUse] = {
     {
         // Recv HEADERS Frame
@@ -147,10 +155,16 @@ const int event_status_table[8][internal::kDoNotUse] = {
     },
 };
 
+/** @brief Look up the next state for a given event and current state. */
 static inline int get_next_status(http2_stream_event event, int current) {
     return event_status_table[static_cast<int>(event)][current];
 }
 
+// ============================================================================
+// State machine transitions (unchanged)
+// ============================================================================
+
+/** @brief Transition state on sending a PUSH_PROMISE frame. */
 void http2_stream::send_push_promise() {
     auto next_state = get_next_status(STREAM_EVENT_PP_S, _state);
     if (next_state != internal::kDoNotUse) {
@@ -158,6 +172,7 @@ void http2_stream::send_push_promise() {
     }
 }
 
+/** @brief Transition state on receiving a PUSH_PROMISE frame. */
 void http2_stream::recv_push_promise() {
     auto next_state = get_next_status(STREAM_EVENT_PP_R, _state);
     if (next_state != internal::kDoNotUse) {
@@ -165,6 +180,7 @@ void http2_stream::recv_push_promise() {
     }
 }
 
+/** @brief Transition state on sending a HEADERS frame. */
 void http2_stream::send_headers() {
     auto next_state = get_next_status(STREAM_EVENT_H_S, _state);
     if (next_state != internal::kDoNotUse) {
@@ -172,12 +188,14 @@ void http2_stream::send_headers() {
     }
 }
 
+/** @brief Transition state on receiving a HEADERS frame and store decoded headers. */
 void http2_stream::recv_headers(std::vector<hpack::mdelem_data> &headers) {
     auto next_state = get_next_status(STREAM_EVENT_H_R, _state);
     if (next_state != internal::kDoNotUse) {
         _state = next_state;
     }
     _headers = std::move(headers);
+    _headers_dirty = true;
 }
 
 void http2_stream::send_rst_stream() {
@@ -211,21 +229,29 @@ void http2_stream::recv_end_stream() {
     mark_unreadable();
 }
 
-// ---------------------------------
+// ============================================================================
+// Constructor
+// ============================================================================
 
-http2_stream::http2_stream(uint64_t connection_id, uint32_t stream_id)
+http2_stream::http2_stream(uint64_t connection_id, uint32_t stream_id, http2_connection *conn)
     : _connection_id(connection_id)
     , _stream_id(stream_id)
     , _state(internal::kIdle)
     , _frame_flags(0)
-    , _frame_type(0) {
-    _read_closed = false;
-    _write_closed = false;
+    , _frame_type(0)
+    , _read_closed(false)
+    , _write_closed(false)
+    , _last_error(0)
+    , _headers_dirty(true)
+    , _conn(conn) {
     _spec.depend_stream_id = 0;
     _spec.exclusive = false;
     _spec.weight = 16;
-    _last_error = 0;
 }
+
+// ============================================================================
+// Frame info
+// ============================================================================
 
 uint8_t http2_stream::frame_type() {
     return _frame_type;
@@ -238,21 +264,30 @@ uint8_t http2_stream::frame_flags() {
 void http2_stream::save_frame_info(http2_frame_hdr *hdr) {
     _frame_type = hdr->type;
     _frame_flags = hdr->flags;
-    if (_frame_flags & HTTP2_FLAG_END_STREAM) {
+    if (_frame_flags & static_cast<uint8_t>(Http2FrameFlag::EndStream)) {
         recv_end_stream();
     }
 }
+
+// ============================================================================
+// Data management
+// ============================================================================
 
 void http2_stream::append_headers(const std::vector<hpack::mdelem_data> &headers) {
     for (size_t i = 0; i < headers.size(); i++) {
         _headers.emplace_back(headers[i]);
     }
+    _headers_dirty = true;
 }
 
 void http2_stream::append_data(slice s) {
     slice obj(s.data(), s.size());
     _data_cache.add_slice(obj);
 }
+
+// ============================================================================
+// Stream info
+// ============================================================================
 
 bool http2_stream::is_closed() const {
     return _state == internal::kClosed;
@@ -262,13 +297,21 @@ uint32_t http2_stream::stream_id() const {
     return _stream_id;
 }
 
+int http2_stream::get_state() const {
+    return _state;
+}
+
+// ============================================================================
+// Priority
+// ============================================================================
+
 void http2_stream::set_priority_info(http2_priority_spec *info) {
     _spec = *info;
 }
 
-int http2_stream::get_state() const {
-    return _state;
-}
+// ============================================================================
+// Read/write control
+// ============================================================================
 
 void http2_stream::mark_unwritable() {
     _write_closed = true;
@@ -282,54 +325,93 @@ std::shared_ptr<http2::Stream> http2_stream::get_shared_stream() {
     return shared_from_this();
 }
 
-uint64_t http2_stream::ConnectionId() {
+// ============================================================================
+// http2::Stream interface — read-only state
+// ============================================================================
+
+uint64_t http2_stream::ConnectionId() const {
     return _connection_id;
 }
 
-uint32_t http2_stream::StreamId() {
+uint32_t http2_stream::StreamId() const {
     return _stream_id;
 }
 
-int32_t http2_stream::Weight() {
-    return _spec.weight;
-}
-
-bool http2_stream::Exclusive() {
-    return _spec.exclusive;
-}
-
-int32_t http2_stream::Flags() {
+int http2_stream::Flags() const {
     return _frame_flags;
 }
 
-uint32_t http2_stream::ErrorCode() {
+uint32_t http2_stream::ErrorCode() const {
     return _last_error;
 }
 
-int http2_stream::CurrentState() {
+int http2_stream::CurrentState() const {
     return _state;
 }
 
-std::multimap<std::string, std::string> http2_stream::GetHeaders() {
-    std::multimap<std::string, std::string> headers;
-    for (size_t i = 0; i < _headers.size(); i++) {
-        std::string k = _headers[i].key.to_string();
-        std::string v = _headers[i].value.to_string();
-        headers.insert({k, v});
-    }
-    return headers;
+// ============================================================================
+// http2::Stream interface — send operations (delegate to connection)
+// ============================================================================
+
+bool http2_stream::SendHeaders(const std::vector<std::pair<std::string, std::string>> &headers,
+                               bool end_stream) {
+    if (!(_conn)) return false;
+    return _conn->stream_send_headers(this, headers, end_stream);
 }
 
-uint32_t http2_stream::GetDataBlock(uint32_t (*parse_func)(const uint8_t *ptr, uint32_t len)) {
-    if (parse_func) {
-        slice s = _data_cache.merge();
-        return parse_func(s.data(), s.size());
-    }
+bool http2_stream::SendData(const uint8_t *data, uint32_t size, bool end_stream) {
+    if (!(_conn)) return false;
+    return _conn->stream_send_data(this, data, size, end_stream);
+}
+
+bool http2_stream::SendTrailingHeaders(
+    const std::vector<std::pair<std::string, std::string>> &headers) {
+    if (!(_conn)) return false;
+    return _conn->stream_send_trailing_headers(this, headers);
+}
+
+bool http2_stream::SendRSTStream(uint32_t error_code) {
+    if (!(_conn)) return false;
+    return _conn->stream_send_rst_stream(this, error_code);
+}
+
+// ============================================================================
+// http2::Stream interface — data reading
+// ============================================================================
+
+uint32_t http2_stream::DataSize() const {
     return static_cast<uint32_t>(_data_cache.get_buffer_length());
 }
 
-void http2_stream::PopDataBlock(uint8_t *output, uint32_t size) {
-    assert(size <= _data_cache.get_buffer_length());
-    _data_cache.copy_to_buffer(output, size);
-    _data_cache.move_header(size);
+uint32_t http2_stream::ReadData(uint8_t *buffer, uint32_t size) {
+    return static_cast<uint32_t>(_data_cache.copy_to_buffer(buffer, size));
+}
+
+const uint8_t *http2_stream::PeekData(uint32_t *out_size) const {
+    if (_data_cache.empty()) {
+        if (out_size) *out_size = 0;
+        return nullptr;
+    }
+    const slice &front = _data_cache.front();
+    if (out_size) *out_size = static_cast<uint32_t>(front.size());
+    return front.data();
+}
+
+// ============================================================================
+// http2::Stream interface — header reading (lazy conversion)
+// ============================================================================
+
+const std::vector<std::pair<std::string, std::string>> &http2_stream::GetHeaders() const {
+    if (_headers_dirty) {
+        ensure_headers_decoded();
+    }
+    return _public_headers;
+}
+
+void http2_stream::ensure_headers_decoded() const {
+    _public_headers.clear();
+    for (auto &h : _headers) {
+        _public_headers.push_back({h.key.to_string(), h.value.to_string()});
+    }
+    _headers_dirty = false;
 }

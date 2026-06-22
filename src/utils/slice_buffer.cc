@@ -1,14 +1,21 @@
+/**
+ * @file slice_buffer.cc
+ * @brief Implementation of the slice_buffer class.
+ */
 
 #include "src/utils/slice_buffer.h"
 #include <assert.h>
 #include <string.h>
 #include <algorithm>
 
+/** @brief Default constructor. Initializes the byte length counter to zero. */
 slice_buffer::slice_buffer()
     : _length(0) {}
 
+/** @brief Destructor. */
 slice_buffer::~slice_buffer() {}
 
+/** @brief Merges all stored slices into a single contiguous slice. */
 slice slice_buffer::merge() const {
 
     if (slice_count() == 0) {
@@ -29,14 +36,17 @@ slice slice_buffer::merge() const {
     return obj;
 }
 
+/** @brief Returns the number of slices in the internal vector. */
 size_t slice_buffer::slice_count() const {
     return _vs.size();
 }
 
+/** @brief Returns the accumulated byte length of all slices. */
 size_t slice_buffer::get_buffer_length() const {
     return _length;
 }
 
+/** @brief Appends a const slice reference to the buffer. */
 void slice_buffer::add_slice(const slice &s) {
     if (!s.empty()) {
         _vs.emplace_back(s);
@@ -44,6 +54,7 @@ void slice_buffer::add_slice(const slice &s) {
     }
 }
 
+/** @brief Appends a slice by moving it into the buffer. */
 void slice_buffer::add_slice(slice &&s) {
     if (!s.empty()) {
         _vs.emplace_back(s);
@@ -51,6 +62,7 @@ void slice_buffer::add_slice(slice &&s) {
     }
 }
 
+/** @brief Extracts the first len bytes as a new contiguous slice. */
 slice slice_buffer::get_header(size_t len) {
     if (len == 0 || get_buffer_length() < len) {
         return slice();
@@ -61,6 +73,7 @@ slice slice_buffer::get_header(size_t len) {
     return s;
 }
 
+/** @brief Discards the first len bytes from the buffer. */
 bool slice_buffer::move_header(size_t len) {
     if (get_buffer_length() < len) {
         return false;
@@ -88,6 +101,7 @@ bool slice_buffer::move_header(size_t len) {
     return true;
 }
 
+/** @brief Copies up to length bytes from the buffer into the destination pointer. */
 size_t slice_buffer::copy_to_buffer(void *buffer, size_t length) {
     assert(length <= get_buffer_length());
 
@@ -111,23 +125,32 @@ size_t slice_buffer::copy_to_buffer(void *buffer, size_t length) {
     return pos;
 }
 
+/** @brief Clears all slices and resets the byte length to zero. */
 void slice_buffer::clear_buffer() {
     _vs.clear();
     _length = 0;
 }
 
+/** @brief Returns true if the buffer contains no slices. */
+bool slice_buffer::empty() const {
+    return _vs.empty();
+}
+
+/** @brief Returns a const reference to the first slice. Asserts non-empty. */
 const slice &slice_buffer::front() const {
     size_t n = _vs.size();
     assert(n > 0);
     return _vs[0];
 }
 
+/** @brief Returns a const reference to the last slice. Asserts non-empty. */
 const slice &slice_buffer::back() const {
     size_t n = _vs.size();
     assert(n > 0);
     return _vs[n - 1];
 }
 
+/** @brief Removes the first slice from the buffer. */
 void slice_buffer::pop_front() {
     if (!_vs.empty()) {
         auto it = _vs.begin();
@@ -136,6 +159,7 @@ void slice_buffer::pop_front() {
     }
 }
 
+/** @brief Removes the last slice from the buffer. */
 void slice_buffer::pop_back() {
     size_t c = _vs.size();
     if (c != 0) {
@@ -146,6 +170,7 @@ void slice_buffer::pop_back() {
     }
 }
 
+/** @brief Accesses a slice by index. Asserts the index is in range. */
 const slice &slice_buffer::operator[](size_t i) const {
     assert(i < _vs.size());
     return _vs[i];
