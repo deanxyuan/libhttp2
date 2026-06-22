@@ -1,16 +1,23 @@
+/**
+ * @file http2.cc
+ * @brief HTTP/2 transport implementation — provides the TransportAdaptor class
+ *        that bridges the public Transport interface to the internal http2_connection.
+ */
+
 #include "http2/transport.h"
+#include <mutex>
 #include <string.h>
 #include "src/http2/connection.h"
-#include "src/http2/errors.h"
+#include "src/http2/stream.h"
+#include "src/http2/frame.h"
 #include "src/hpack/static_metadata.h"
-
-#include "src/utils/log.h"
 
 namespace {
 std::mutex global_init_mutex;
 int32_t global_init_counter = 0;
 }  // namespace
 
+/** @brief Initialize the library-wide static metadata context (once, thread-safe). */
 static void internal_init_library() {
     std::lock_guard<std::mutex> lck(global_init_mutex);
     if (global_init_counter == 0) {
@@ -19,77 +26,79 @@ static void internal_init_library() {
     global_init_counter++;
 }
 
+/** @brief Release the library-wide static metadata context when last reference is dropped. */
 static void internal_cleanup_library() {
     std::lock_guard<std::mutex> lck(global_init_mutex);
+    if (global_init_counter <= 0) return;
     if (global_init_counter == 1) {
         destroy_static_metadata_context();
     }
     global_init_counter--;
 }
+
+/** @brief Tag type used to restrict LibraryInitializer construction. */
 struct InternalTag {};
 
-class LibraryInitlizer {
+/** @brief RAII helper that initializes/cleans up the library-wide static metadata context. */
+class LibraryInitializer {
 public:
-    explicit LibraryInitlizer(InternalTag) {
+    explicit LibraryInitializer(InternalTag) {
         internal_init_library();
     }
-    ~LibraryInitlizer() {
+    ~LibraryInitializer() {
         internal_cleanup_library();
-    }
-
-    int temp() {
-        return 42;
     }
 };
 
 namespace http2 {
+
+/** @brief Concrete Transport implementation that delegates to http2_connection. */
 class TransportAdaptor : public Transport {
 public:
+    /**
+     * @brief Construct a TransportAdaptor wrapping a new http2_connection.
+     * @param service   SendService used for raw data output.
+     * @param cid       Unique connection identifier.
+     * @param client_side  True if this endpoint is the HTTP/2 client.
+     */
     TransportAdaptor(SendService *service, uint64_t cid, bool client_side);
+
+    /** @brief Destructor. */
     ~TransportAdaptor();
 
-    uint64_t GetConnectionId() override;
-    bool IsClientSide() override;
+    // === Transport interface ===
 
+    void SetEventHandler(EventHandler *handler) override;
     void SetFlowControlHandler(FlowControlHandler *handler) override;
-    void SetFrameEventHandler(FrameEventHandler *handler) override;
-
-    bool SendPing(uint64_t info) override;
+    uint64_t GetConnectionId() const override;
+    bool IsClientSide() const override;
+    std::shared_ptr<Stream> CreateStream() override;
     bool SendSettings(const std::vector<std::pair<uint16_t, uint32_t>> &settings) override;
-    bool SendPriority(uint32_t stream_id, uint8_t weight, uint32_t depend_stream_id) override;
-
-    bool SendRSTStream(uint32_t stream_id, uint32_t error_code) override;
-    void SendGoAway(uint32_t last_stream_id, uint32_t error_code, const std::string &debug) override;
-    bool SendWindowUpdate(uint32_t stream_id, WindowUpdate *wu) override;
-
-    bool SendRequest(Request *req) override;
-    bool SendResponse(Response *rsp) override;
-
-    // if initlize_headers not null, send PUSH_PROMISE
-    // else just allocate local stream id
-    uint32_t CreateStream(std::vector<std::pair<std::string, std::string>> *initlize_headers) override;
-
-    /*
-     * Return -1 means an error occurred, return 0 means still need to provide
-     * data, other values greater than 0 means the length of a complete http2
-     * packet. When calling the ReceivedData function, at least one complete
-     * http2 package must be provided.
-     */
-    int CheckPackageLength(const uint8_t *data, uint32_t len) override;
-
-    /*
-     * Need to provide one or more complete http2 data package. To get the
-     * complete http2 package, please check CheckHttp2PackageLength function.
-     */
-    void ReceivedData(const uint8_t *buf, uint32_t len) override;
-
-    // Call this function to notify a connection to be disconnected.
+    bool SendPing(uint64_t info) override;
+    bool SendGoAway(uint32_t error_code, uint32_t last_stream_id,
+                    const std::string &debug) override;
+    std::shared_ptr<Stream> SendPushPromise(
+        std::shared_ptr<Stream> request_stream,
+        const std::vector<std::pair<std::string, std::string>> &headers) override;
+    int ReceivedData(const uint8_t *buf, uint32_t len) override;
     void Shutdown() override;
 
+    std::shared_ptr<Stream> FindStream(uint32_t stream_id) override;
+    uint32_t GetRemoteSetting(uint16_t id) const override;
+    uint32_t GetLocalSetting(uint16_t id) const override;
+    http2::ConnectionInfo GetConnectionInfo() const override;
+    bool SendWindowUpdate(uint32_t stream_id, uint32_t increment) override;
+    void SetBufferedMode(bool enable) override;
+    bool Flush() override;
+
 private:
-    LibraryInitlizer _internal;
+    LibraryInitializer _internal;
     http2_connection _impl;
 };
+
+// ============================================================================
+// Construction / destruction
+// ============================================================================
 
 TransportAdaptor::TransportAdaptor(SendService *service, uint64_t cid, bool client_side)
     : _internal(InternalTag())
@@ -97,220 +106,173 @@ TransportAdaptor::TransportAdaptor(SendService *service, uint64_t cid, bool clie
 
 TransportAdaptor::~TransportAdaptor() {}
 
-uint64_t TransportAdaptor::GetConnectionId() {
-    return _impl.connection_id();
-}
+// ============================================================================
+// Handler setters
+// ============================================================================
 
-bool TransportAdaptor::IsClientSide() {
-    return _impl.is_client_side();
+void TransportAdaptor::SetEventHandler(EventHandler *handler) {
+    _impl.set_event_handler(handler);
 }
 
 void TransportAdaptor::SetFlowControlHandler(FlowControlHandler *handler) {
     _impl.set_flow_control_handler(handler);
 }
 
-void TransportAdaptor::SetFrameEventHandler(FrameEventHandler *handler) {
-    _impl.set_frame_event_handler(handler);
+// ============================================================================
+// Connection queries
+// ============================================================================
+
+uint64_t TransportAdaptor::GetConnectionId() const {
+    return _impl.connection_id();
+}
+
+bool TransportAdaptor::IsClientSide() const {
+    return _impl.is_client_side();
+}
+
+// ============================================================================
+// Stream creation
+// ============================================================================
+
+std::shared_ptr<Stream> TransportAdaptor::CreateStream() {
+    return std::static_pointer_cast<Stream>(_impl.create_stream());
+}
+
+// ============================================================================
+// Transport-level send operations
+// ============================================================================
+
+bool TransportAdaptor::SendSettings(const std::vector<std::pair<uint16_t, uint32_t>> &settings) {
+    return _impl.send_settings(settings);
 }
 
 bool TransportAdaptor::SendPing(uint64_t info) {
     return _impl.send_ping(info);
 }
 
-bool TransportAdaptor::SendSettings(const std::vector<std::pair<uint16_t, uint32_t>> &settings) {
-    return _impl.send_settings(settings);
+bool TransportAdaptor::SendGoAway(uint32_t error_code, uint32_t last_stream_id,
+                                  const std::string &debug) {
+    return _impl.send_goaway(error_code, last_stream_id, debug);
 }
 
-bool TransportAdaptor::SendPriority(uint32_t stream_id, uint8_t weight, uint32_t depend_stream_id) {
-    return _impl.send_priority(stream_id, weight, depend_stream_id);
+std::shared_ptr<Stream> TransportAdaptor::SendPushPromise(
+    std::shared_ptr<Stream> request_stream,
+    const std::vector<std::pair<std::string, std::string>> &headers) {
+    auto req = std::dynamic_pointer_cast<http2_stream>(request_stream);
+    if (!req) return nullptr;
+    return std::static_pointer_cast<Stream>(_impl.send_push_promise(req.get(), headers));
 }
 
-bool TransportAdaptor::SendRSTStream(uint32_t stream_id, uint32_t error_code) {
-    return _impl.send_rst_stream(stream_id, error_code);
-}
+// ============================================================================
+// ReceivedData — feed incoming TCP data to the transport
+// ============================================================================
 
-void TransportAdaptor::SendGoAway(uint32_t last_stream_id, uint32_t error_code, const std::string &debug) {
-    _impl.send_goaway(error_code, last_stream_id, debug);
-}
+int TransportAdaptor::ReceivedData(const uint8_t *buf, uint32_t len) {
+    const uint8_t *start = buf;
 
-bool TransportAdaptor::SendWindowUpdate(uint32_t stream_id, WindowUpdate *wu) {
-    if (!wu) return false;
-    return _impl.send_window_update(stream_id, wu);
-}
-
-bool TransportAdaptor::SendRequest(Request *req) {
-    if (!req) return false;
-    return _impl.send_request(req);
-}
-
-bool TransportAdaptor::SendResponse(Response *rsp) {
-    if (!rsp) return false;
-    return _impl.send_response(rsp);
-}
-
-uint32_t TransportAdaptor::CreateStream(std::vector<std::pair<std::string, std::string>> *headers) {
-    if (headers && !headers->empty()) {
-        return _impl.send_push_promise(headers);
-    }
-    return _impl.create_stream();
-}
-
-/*
- * Return -1 means an error occurred, return 0 means still need to provide
- * data, other values greater than 0 means the length of a complete http2
- * packet. When calling the ReceivedData function, at least one complete
- * http2 package must be provided.
- */
-int TransportAdaptor::CheckPackageLength(const uint8_t *data, uint32_t data_size) {
-    if (data_size < HTTP2_FRAME_HEADER_SIZE) return 0;
-
-    int64_t total_pack_len = 0;
-
-    if (_impl.need_verify_preface() && memcmp(data, http2_connection::PREFACE, 4) == 0) {
-        if (data_size < http2_connection::PREFACE_SIZE) {
-            return http2_connection::PREFACE_SIZE;
+    // --- Client preface verification (server side only) ---
+    if (_impl.need_verify_preface()) {
+        if (len < static_cast<uint32_t>(http2_connection::PREFACE_SIZE)) {
+            return 0;  // need more data
         }
-        total_pack_len += http2_connection::PREFACE_SIZE;
-        data_size -= http2_connection::PREFACE_SIZE;
-        data += http2_connection::PREFACE_SIZE;
+        if (memcmp(buf, http2_connection::PREFACE, http2_connection::PREFACE_SIZE) != 0) {
+            _impl.send_goaway(static_cast<uint32_t>(Http2ErrorCode::ProtocolError));
+            return -1;
+        }
+        _impl.verify_preface_done();
+        _impl.send_initial_settings();
+        buf += http2_connection::PREFACE_SIZE;
+        len -= http2_connection::PREFACE_SIZE;
     }
 
-    while (data_size >= HTTP2_FRAME_HEADER_SIZE) {
+    // --- Frame loop: parse header, validate size, process ---
+    while (len >= HTTP2_FRAME_HEADER_SIZE) {
+        // Unpack the 9-byte frame header to get the payload length.
         http2_frame_hdr hdr;
-        http2_frame_header_unpack(&hdr, data);
+        http2_frame_header_unpack(&hdr, buf);
+
+        // Check frame size against our local MAX_FRAME_SIZE setting.
         if (hdr.length > _impl.local_max_frame_size()) {
-            _impl.send_goaway(HTTP2_FRAME_SIZE_ERROR);
-            log_warn("TransportAdaptor: hdr.length(%lu) > max_frame_size(%lu)", hdr.length,
-                     _impl.local_max_frame_size());
+            _impl.send_goaway(static_cast<uint32_t>(Http2ErrorCode::FrameSizeError));
             return -1;
         }
 
-        uint32_t pack_len = hdr.length + HTTP2_FRAME_HEADER_SIZE;
-        if (total_pack_len + pack_len > INT32_MAX) {
-            break;
+        uint32_t frame_total = hdr.length + HTTP2_FRAME_HEADER_SIZE;
+        if (frame_total > len) {
+            break;  // incomplete frame — need more data
         }
 
-        total_pack_len += pack_len;
-
-        if (pack_len > data_size) {
-            break;
+        // Process the complete frame.
+        int consumed = _impl.package_process(buf, frame_total);
+        if (consumed < 0) {
+            return -1;
         }
-
-        data_size -= pack_len;
-        data += pack_len;
+        buf += consumed;
+        len -= consumed;
     }
 
-    return static_cast<int>(total_pack_len);
+    return static_cast<int>(buf - start);
 }
 
-/*
- * Need to provide one or more complete http2 data package. To get the
- * complete http2 package, please check CheckHttp2PackageLength function.
- */
-void TransportAdaptor::ReceivedData(const uint8_t *package, uint32_t package_length) {
-    if (_impl.need_verify_preface()) {
-        if (package_length < http2_connection::PREFACE_SIZE ||
-            memcmp(package, http2_connection::PREFACE, http2_connection::PREFACE_SIZE) != 0) {
-            _impl.send_goaway(HTTP2_PROTOCOL_ERROR);
-            return;
-        }
-        _impl.verify_preface_done();
-        package_length -= http2_connection::PREFACE_SIZE;
-        package += http2_connection::PREFACE_SIZE;
-    }
+// ============================================================================
+// Shutdown
+// ============================================================================
 
-    while (package_length > 0) {
-        int result = _impl.package_process(package, package_length);
-        if (result == -1) {
-            break;
-        }
-        package_length -= result;
-        package += result;
-    }
-}
-
-// Call this function to notify a connection to be disconnected.
 void TransportAdaptor::Shutdown() {
-    // TODO(SHADOW): cleanup
+    _impl.send_goaway(static_cast<uint32_t>(Http2ErrorCode::NoError));
 }
 
-Transport *CreateTransport(uint64_t connection_id, bool client_side, SendService *service) {
-    auto transport = new TransportAdaptor(service, connection_id, client_side);
-    return transport;
+// ============================================================================
+// New query methods
+// ============================================================================
+
+std::shared_ptr<Stream> TransportAdaptor::FindStream(uint32_t stream_id) {
+    return std::static_pointer_cast<Stream>(_impl.find_stream(stream_id));
 }
 
-void DestroyTransport(Transport *transport) {
-    delete transport;
+uint32_t TransportAdaptor::GetRemoteSetting(uint16_t id) const {
+    return _impl.remote_setting(id);
 }
 
-void SetLogPrintFunction(void (*print_func)(const char *file, int line, int level, const char *message)) {
-    LogSetPrintFunction(print_func);
-}
-void SetLogLevel(int level) {
-    LogSetLevel(level);
+uint32_t TransportAdaptor::GetLocalSetting(uint16_t id) const {
+    return _impl.local_setting(id);
 }
 
-Request::Request()
-    : stream_id_(0)
-    , finish_(false) {}
-
-Request::~Request() {}
-
-void Request::SetStreamId(uint32_t sid) {
-    stream_id_ = sid;
+http2::ConnectionInfo TransportAdaptor::GetConnectionInfo() const {
+    return _impl.get_connection_info();
 }
 
-void Request::AddMetadata(const std::string &key, const std::string &value) {
-    headers_.push_back({key, value});
+void TransportAdaptor::SetBufferedMode(bool enable) {
+    _impl.set_buffered_mode(enable);
 }
 
-void Request::AppendData(const uint8_t *data, uint32_t size) {
-    data_.push_back(std::string(reinterpret_cast<const char *>(data), size));
+bool TransportAdaptor::Flush() {
+    return _impl.flush_buffer();
 }
 
-void Request::Finish() {
-    finish_ = true;
+// ============================================================================
+// SendWindowUpdate
+// ============================================================================
+
+bool TransportAdaptor::SendWindowUpdate(uint32_t stream_id, uint32_t increment) {
+    http2::WindowUpdate wu;
+    if (stream_id == 0) {
+        wu.connection_window_size_increment = increment;
+        wu.stream_window_size_increment = 0;
+    } else {
+        wu.connection_window_size_increment = 0;
+        wu.stream_window_size_increment = increment;
+    }
+    return _impl.send_window_update(stream_id, wu);
 }
 
-void Request::Reset() {
-    stream_id_ = 0;
-    headers_.clear();
-    data_.clear();
-    finish_ = false;
-}
+// ============================================================================
+// Factory
+// ============================================================================
 
-Response::Response()
-    : stream_id_(0)
-    , finish_(false) {}
-
-Response::~Response() {}
-
-void Response::SetStreamId(uint32_t sid) {
-    stream_id_ = sid;
-}
-
-void Response::AddInitlizeMetadata(const std::string &key, const std::string &value) {
-    initlize_headers_.push_back({key, value});
-}
-
-void Response::AddTrailingMetadata(const std::string &key, const std::string &value) {
-    trailing_headers_.push_back({key, value});
-}
-
-void Response::AppendData(const uint8_t *data, uint32_t size) {
-    data_.push_back(std::string(reinterpret_cast<const char *>(data), size));
-}
-
-void Response::Finish() {
-    finish_ = true;
-}
-
-void Response::Reset() {
-    stream_id_ = 0;
-    initlize_headers_.clear();
-    trailing_headers_.clear();
-    data_.clear();
-    finish_ = false;
+std::unique_ptr<Transport> CreateTransport(uint64_t connection_id, bool client_side,
+                                           SendService *service) {
+    return std::make_unique<TransportAdaptor>(service, connection_id, client_side);
 }
 
 }  // namespace http2
