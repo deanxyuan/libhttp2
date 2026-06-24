@@ -1,6 +1,6 @@
 /**
  * @file connection.h
- * @brief HTTP/2 connection management — the http2_connection class that owns
+ * @brief HTTP/2 connection management -- the http2_connection class that owns
  *        streams, settings, HPACK state, and frame dispatch.
  */
 
@@ -45,7 +45,7 @@ public:
      */
     http2_connection(http2::SendService *sender, uint64_t cid, bool client_side);
 
-    /** @brief Destructor — releases HPACK compressor resources. */
+    /** @brief Destructor -- releases HPACK compressor resources. */
     ~http2_connection();
 
     /** @brief Return the connection identifier. */
@@ -86,6 +86,9 @@ public:
 
     /** @brief Send a GOAWAY frame to initiate connection shutdown. */
     bool send_goaway(uint32_t error_code, uint32_t last_stream_id = 0, const std::string &debug = std::string());
+
+    /** @brief Begin a graceful shutdown (drain): send GOAWAY, reject new streams, wait for completion. */
+    void drain();
 
     /** @brief Send a PUSH_PROMISE frame. Returns the promised stream. */
     std::shared_ptr<http2_stream> send_push_promise(
@@ -252,6 +255,9 @@ private:
     /** @brief Notify the event handler that a stream has been closed. */
     void notify_stream_closed(std::shared_ptr<http2_stream> &stream, uint32_t error_code);
 
+    /** @brief Check if drain is complete (all streams closed) and fire OnShutdownComplete. */
+    void check_drain_complete();
+
     /** @brief Lazily send the HTTP/2 client connection preface + SETTINGS on first send (client side only). */
     void ensure_preface_sent();
 
@@ -286,6 +292,7 @@ private:
 
     uint32_t _sent_goaway_stream_id;
     bool _sent_goaway;
+    bool _draining;
 
     // Because the END_HEADERS flag is missing
     bool _next_frame_limit;

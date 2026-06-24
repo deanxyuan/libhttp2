@@ -1,6 +1,6 @@
 /**
  * @file stream.cc
- * @brief HTTP/2 stream state machine implementation — transitions, data buffering,
+ * @brief HTTP/2 stream state machine implementation -- transitions, data buffering,
  *        and the public Stream interface methods.
  */
 
@@ -326,7 +326,7 @@ std::shared_ptr<http2::Stream> http2_stream::get_shared_stream() {
 }
 
 // ============================================================================
-// http2::Stream interface — read-only state
+// http2::Stream interface -- read-only state
 // ============================================================================
 
 uint64_t http2_stream::ConnectionId() const {
@@ -350,7 +350,7 @@ int http2_stream::CurrentState() const {
 }
 
 // ============================================================================
-// http2::Stream interface — send operations (delegate to connection)
+// http2::Stream interface -- send operations (delegate to connection)
 // ============================================================================
 
 bool http2_stream::SendHeaders(const std::vector<std::pair<std::string, std::string>> &headers,
@@ -376,7 +376,7 @@ bool http2_stream::SendRSTStream(uint32_t error_code) {
 }
 
 // ============================================================================
-// http2::Stream interface — data reading
+// http2::Stream interface -- data reading
 // ============================================================================
 
 uint32_t http2_stream::DataSize() const {
@@ -398,7 +398,7 @@ const uint8_t *http2_stream::PeekData(uint32_t *out_size) const {
 }
 
 // ============================================================================
-// http2::Stream interface — header reading (lazy conversion)
+// http2::Stream interface -- header reading (lazy conversion)
 // ============================================================================
 
 const std::vector<std::pair<std::string, std::string>> &http2_stream::GetHeaders() const {

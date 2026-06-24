@@ -1,6 +1,6 @@
 /**
  * @file http2.cc
- * @brief HTTP/2 transport implementation — provides the TransportAdaptor class
+ * @brief HTTP/2 transport implementation -- provides the TransportAdaptor class
  *        that bridges the public Transport interface to the internal http2_connection.
  */
 
@@ -81,6 +81,7 @@ public:
         std::shared_ptr<Stream> request_stream,
         const std::vector<std::pair<std::string, std::string>> &headers) override;
     int ReceivedData(const uint8_t *buf, uint32_t len) override;
+    void Drain() override;
     void Shutdown() override;
 
     std::shared_ptr<Stream> FindStream(uint32_t stream_id) override;
@@ -164,7 +165,7 @@ std::shared_ptr<Stream> TransportAdaptor::SendPushPromise(
 }
 
 // ============================================================================
-// ReceivedData — feed incoming TCP data to the transport
+// ReceivedData -- feed incoming TCP data to the transport
 // ============================================================================
 
 int TransportAdaptor::ReceivedData(const uint8_t *buf, uint32_t len) {
@@ -199,7 +200,7 @@ int TransportAdaptor::ReceivedData(const uint8_t *buf, uint32_t len) {
 
         uint32_t frame_total = hdr.length + HTTP2_FRAME_HEADER_SIZE;
         if (frame_total > len) {
-            break;  // incomplete frame — need more data
+            break;  // incomplete frame -- need more data
         }
 
         // Process the complete frame.
@@ -212,6 +213,14 @@ int TransportAdaptor::ReceivedData(const uint8_t *buf, uint32_t len) {
     }
 
     return static_cast<int>(buf - start);
+}
+
+// ============================================================================
+// Drain -- graceful shutdown
+// ============================================================================
+
+void TransportAdaptor::Drain() {
+    _impl.drain();
 }
 
 // ============================================================================

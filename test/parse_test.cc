@@ -94,6 +94,102 @@ TEST(ParserTest, FrameRST) {
     ASSERT_EQ(frame.error_code, 0);
 }
 
+TEST(ParserTest, FramePriority) {
+    // PRIORITY: stream_id=1, depend=3, exclusive=0, weight=16 (wire=15)
+    uint8_t buff[] = {0x00, 0x00, 0x05, 0x02, 0x00, 0x00, 0x00, 0x00, 0x01,
+                      0x00, 0x00, 0x00, 0x03, 0x0F};
+    http2_frame_hdr hdr;
+    http2_frame_header_unpack(&hdr, buff);
+
+    http2_frame_priority frame;
+    parse_http2_frame_priority(&hdr, buff + 9, &frame);
+
+    ASSERT_EQ(hdr.flags, 0);
+    ASSERT_EQ(hdr.type, 0x02);
+    ASSERT_EQ(hdr.length, 5);
+    ASSERT_EQ(hdr.stream_id, 1);
+    ASSERT_EQ(frame.pspec.depend_stream_id, 3);
+    ASSERT_EQ(frame.pspec.exclusive, 0);
+    ASSERT_EQ(frame.pspec.weight, 16);
+}
+
+TEST(ParserTest, FrameGoaway) {
+    // GOAWAY: last_stream_id=5, error_code=0, no debug data
+    uint8_t buff[] = {0x00, 0x00, 0x08, 0x07, 0x00, 0x00, 0x00, 0x00, 0x00,
+                      0x00, 0x00, 0x00, 0x05, 0x00, 0x00, 0x00, 0x00};
+    http2_frame_hdr hdr;
+    http2_frame_header_unpack(&hdr, buff);
+
+    http2_frame_goaway frame;
+    parse_http2_frame_goaway(&hdr, buff + 9, &frame);
+
+    ASSERT_EQ(hdr.flags, 0);
+    ASSERT_EQ(hdr.type, 0x07);
+    ASSERT_EQ(hdr.length, 8);
+    ASSERT_EQ(hdr.stream_id, 0);
+    ASSERT_EQ(frame.last_stream_id, 5);
+    ASSERT_EQ(frame.error_code, 0);
+}
+
+TEST(ParserTest, FrameWindowUpdate) {
+    // WINDOW_UPDATE: window_size_inc=1024, stream_id=0
+    uint8_t buff[] = {0x00, 0x00, 0x04, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00,
+                      0x00, 0x00, 0x04, 0x00};
+    http2_frame_hdr hdr;
+    http2_frame_header_unpack(&hdr, buff);
+
+    http2_frame_window_update frame;
+    parse_http2_frame_window_update(&hdr, buff + 9, &frame);
+
+    ASSERT_EQ(hdr.flags, 0);
+    ASSERT_EQ(hdr.type, 0x08);
+    ASSERT_EQ(hdr.length, 4);
+    ASSERT_EQ(hdr.stream_id, 0);
+    ASSERT_EQ(frame.window_size_inc, 1024);
+}
+
+TEST(ParserTest, FrameContinuation) {
+    // CONTINUATION: stream_id=1, 3-byte header block fragment
+    uint8_t buff[] = {0x00, 0x00, 0x03, 0x09, 0x00, 0x00, 0x00, 0x00, 0x01,
+                      0xAA, 0xBB, 0xCC};
+    http2_frame_hdr hdr;
+    http2_frame_header_unpack(&hdr, buff);
+
+    http2_frame_continuation frame;
+    parse_http2_frame_continuation(&hdr, buff + 9, &frame);
+
+    ASSERT_EQ(hdr.flags, 0);
+    ASSERT_EQ(hdr.type, 0x09);
+    ASSERT_EQ(hdr.length, 3);
+    ASSERT_EQ(hdr.stream_id, 1);
+    ASSERT_EQ(frame.header_block_fragment.size(), 3);
+    ASSERT_EQ(frame.header_block_fragment.data()[0], 0xAA);
+    ASSERT_EQ(frame.header_block_fragment.data()[1], 0xBB);
+    ASSERT_EQ(frame.header_block_fragment.data()[2], 0xCC);
+}
+
+TEST(ParserTest, FrameSettingsWithEntries) {
+    // SETTINGS with 2 entries: (HEADER_TABLE_SIZE=4096), (MAX_FRAME_SIZE=16384)
+    uint8_t buff[] = {0x00, 0x00, 0x0c, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00,
+                      0x00, 0x01, 0x00, 0x00, 0x10, 0x00,
+                      0x00, 0x05, 0x00, 0x00, 0x40, 0x00};
+    http2_frame_hdr hdr;
+    http2_frame_header_unpack(&hdr, buff);
+
+    http2_frame_settings frame;
+    parse_http2_frame_settings(&hdr, buff + 9, &frame);
+
+    ASSERT_EQ(hdr.flags, 0);
+    ASSERT_EQ(hdr.type, 0x04);
+    ASSERT_EQ(hdr.length, 12);
+    ASSERT_EQ(hdr.stream_id, 0);
+    ASSERT_EQ(frame.settings.size(), 2);
+    ASSERT_EQ(frame.settings[0].id, 1);
+    ASSERT_EQ(frame.settings[0].value, 4096);
+    ASSERT_EQ(frame.settings[1].id, 5);
+    ASSERT_EQ(frame.settings[1].value, 16384);
+}
+
 int main(int argc, char *argv[]) {
     return test::RunAllTests();
 }

@@ -6,10 +6,10 @@
  *  Request/Response builder classes. Flow control is automatic by default.
  *
  *  Concepts:
- *    - Transport  — one per TCP connection, manages protocol state
- *    - Stream     — one per HTTP/2 stream, can send and receive
- *    - EventHandler — callback interface for incoming events
- *    - SendService  — output bridge to your TCP layer
+ *    - Transport  -- one per TCP connection, manages protocol state
+ *    - Stream     -- one per HTTP/2 stream, can send and receive
+ *    - EventHandler -- callback interface for incoming events
+ *    - SendService  -- output bridge to your TCP layer
  */
 #pragma once
 #include <cstdint>
@@ -120,7 +120,7 @@ constexpr const char* ALPN_PROTOCOL = "h2";
 constexpr size_t ALPN_PROTOCOL_LEN = 2;
 
 // ============================================================================
-// SendService — output bridge to TCP
+// SendService -- output bridge to TCP
 // ============================================================================
 
 /** @brief Output interface for sending raw TCP data.
@@ -150,7 +150,7 @@ public:
 };
 
 // ============================================================================
-// Stream — active HTTP/2 stream with send capabilities
+// Stream -- active HTTP/2 stream with send capabilities
 // ============================================================================
 
 /** @brief Represents an HTTP/2 stream within a connection.
@@ -276,7 +276,7 @@ public:
 };
 
 // ============================================================================
-// EventHandler — callback interface for incoming events
+// EventHandler -- callback interface for incoming events
 // ============================================================================
 
 /** @brief Callback interface for incoming HTTP/2 frame events.
@@ -354,6 +354,14 @@ public:
     virtual void OnGoAway(uint64_t cid, uint32_t last_stream_id, uint32_t error_code,
                           const std::string &debug) {}
 
+    /** @brief Called when all in-flight streams have closed during a Drain operation.
+     *
+     *  This signals that the connection can be safely torn down.
+     *
+     *  @param cid  Connection identifier.
+     */
+    virtual void OnShutdownComplete(uint64_t cid) {}
+
     /** @brief Called when an async SendRawData operation completes.
      *
      *  Only called when SendRawData returned 0 (async queued).
@@ -366,7 +374,7 @@ public:
 };
 
 // ============================================================================
-// FlowControlHandler — optional custom flow control
+// FlowControlHandler -- optional custom flow control
 // ============================================================================
 
 /** @brief Output struct for WINDOW_UPDATE decisions. */
@@ -419,7 +427,7 @@ public:
 };
 
 // ============================================================================
-// ConnectionInfo — snapshot of connection-level state
+// ConnectionInfo -- snapshot of connection-level state
 // ============================================================================
 
 /** @brief Snapshot of connection-level state. */
@@ -428,11 +436,12 @@ struct ConnectionInfo {
     uint32_t last_stream_id;           /**< Highest remote stream ID seen. */
     bool received_goaway;              /**< Whether GOAWAY has been received. */
     bool sent_goaway;                  /**< Whether GOAWAY has been sent. */
+    bool draining;                     /**< Whether the connection is in drain phase. */
     int32_t connection_window;         /**< Current connection-level send window. */
 };
 
 // ============================================================================
-// Transport — core HTTP/2 connection interface
+// Transport -- core HTTP/2 connection interface
 // ============================================================================
 
 /** @brief Core HTTP/2 transport interface.
@@ -454,7 +463,7 @@ struct ConnectionInfo {
  *  Lifecycle:
  *  1. Create with CreateTransport()
  *  2. Set handler via SetEventHandler()
- *  3. Feed incoming data via ReceivedData() — returns bytes consumed
+ *  3. Feed incoming data via ReceivedData() -- returns bytes consumed
  *  4. Create streams via CreateStream() and send via stream methods
  *  5. Call Shutdown() when the TCP connection is closing
  *  6. Release the unique_ptr to destroy
@@ -550,6 +559,18 @@ public:
      *          The caller must retain any unconsumed bytes for the next call.
      */
     virtual int ReceivedData(const uint8_t *buf, uint32_t len) = 0;
+
+    /** @brief Begin a graceful shutdown (drain).
+     *
+     *  Phase 1: Sends a GOAWAY frame with NoError, setting last_stream_id
+     *  to the highest remote stream ID seen. New streams (local or remote)
+     *  will be rejected. Existing in-flight streams continue to process normally.
+     *
+     *  Phase 2: When all in-flight streams have closed, the EventHandler's
+     *  OnShutdownComplete() callback fires, signaling it is safe to close
+     *  the connection.
+     */
+    virtual void Drain() = 0;
 
     /** @brief Notify the transport that the underlying connection is shutting down.
      *

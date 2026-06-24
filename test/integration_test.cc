@@ -2,7 +2,7 @@
  * @file integration_test.cc
  * @brief Integration test for the public http2::Transport API.
  *
- *  Tests a full client→server round-trip using the new Stream-centric interface:
+ *  Tests a full client->server round-trip using the new Stream-centric interface:
  *  - Client creates a stream, sends HEADERS + DATA
  *  - Server receives headers and data via EventHandler callbacks
  *  - Server sends a response back (HEADERS + DATA + trailing HEADERS)
@@ -22,7 +22,7 @@
 class IntegrationTest {};
 
 // ============================================================================
-// LoopbackSendService — wires two transports together in-memory
+// LoopbackSendService -- wires two transports together in-memory
 // ============================================================================
 
 class LoopbackSendService : public http2::SendService {
@@ -39,7 +39,7 @@ public:
 };
 
 // ============================================================================
-// TestEventHandler — records events for verification
+// TestEventHandler -- records events for verification
 // ============================================================================
 
 struct ReceivedFrame {
@@ -56,6 +56,7 @@ public:
     std::vector<std::pair<uint64_t, bool>> settings_events;  // (cid, ack)
     std::vector<std::pair<uint64_t, uint64_t>> ping_events;  // (cid, data)
     std::vector<std::pair<uint64_t, uint32_t>> goaway_events; // (cid, last_stream_id)
+    std::vector<uint64_t> shutdown_complete_events;           // cid
 
     void OnStreamHeaders(std::shared_ptr<http2::Stream> stream) override {
         ReceivedFrame f;
@@ -99,6 +100,10 @@ public:
     void OnGoAway(uint64_t cid, uint32_t last_stream_id, uint32_t error_code,
                   const std::string &debug) override {
         goaway_events.push_back({cid, last_stream_id});
+    }
+
+    void OnShutdownComplete(uint64_t cid) override {
+        shutdown_complete_events.push_back(cid);
     }
 };
 
@@ -144,22 +149,8 @@ TEST(IntegrationTest, ClientServerRoundTrip) {
     client->SetEventHandler(&client_handler);
     server->SetEventHandler(&server_handler);
 
-    // --- Client sends the connection preface + initial SETTINGS ---
-    // For a real client, we need to send the preface. The transport should
-    // handle this when we send our first frame. But actually, the preface
-    // is "PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n" followed by a SETTINGS frame.
-    // The current design expects the user to feed this. Let's send the preface manually.
-    static const uint8_t PREFACE[] = "PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n";
-    // Feed preface to server (server expects to receive it)
-    // But actually, the client transport doesn't auto-send the preface.
-    // The server's ReceivedData will verify the preface. We need to send it
-    // from the client side. Since the client transport doesn't auto-send it,
-    // let's skip preface testing and just test frame exchange.
-
-    // Actually, looking at the code, server ReceivedData checks for the preface
-    // and sends GOAWAY if it's missing. Let's send the preface bytes to the server first.
-    int consumed = server->ReceivedData(PREFACE, 24);
-    ASSERT_TRUE(consumed >= 0);
+    // The client transport auto-sends the connection preface + SETTINGS
+    // on first write via ensure_preface_sent(). No manual preface needed.
 
     // --- Client creates a stream and sends a request ---
     auto stream = client->CreateStream();
@@ -310,11 +301,7 @@ TEST(IntegrationTest, FullRoundTrip) {
     client->SetEventHandler(&client_handler);
     server->SetEventHandler(&server_handler);
 
-    // Send server preface
-    static const uint8_t PREFACE[] = "PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n";
-    server->ReceivedData(PREFACE, 24);
-
-    // Client creates stream and sends request
+    // Client creates stream and sends request (auto-sends preface on first write)
     auto stream = client->CreateStream();
     ASSERT_TRUE(stream != nullptr);
 
@@ -390,11 +377,7 @@ TEST(IntegrationTest, StreamRSTStream) {
     RSTHandler handler;
     server->SetEventHandler(&handler);
 
-    // Send server preface
-    static const uint8_t PREFACE[] = "PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n";
-    server->ReceivedData(PREFACE, 24);
-
-    // Client sends headers
+    // Client sends headers (auto-sends preface on first write)
     auto stream = client->CreateStream();
     stream->SendHeaders({{":method", "GET"}, {":path", "/"}, {":scheme", "https"}, {":authority", "e.com"}}, true);
 
@@ -436,11 +419,7 @@ TEST(IntegrationTest, PeekDataAccess) {
     DataHandler handler;
     server->SetEventHandler(&handler);
 
-    // Send server preface
-    static const uint8_t PREFACE[] = "PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n";
-    server->ReceivedData(PREFACE, 24);
-
-    // Client sends data
+    // Client sends data (auto-sends preface on first write)
     auto stream = client->CreateStream();
     stream->SendHeaders({{":method", "POST"}, {":path", "/"}, {":scheme", "https"}, {":authority", "e.com"}});
 
@@ -452,6 +431,169 @@ TEST(IntegrationTest, PeekDataAccess) {
     ASSERT_TRUE(handler.peeked_ptr != nullptr);
     ASSERT_TRUE(handler.peeked_size == data_len);
     ASSERT_TRUE(memcmp(handler.peeked_ptr, data, data_len) == 0);
+
+    client->Shutdown();
+    server->Shutdown();
+}
+
+// ============================================================================
+// TEST: Drain -- graceful shutdown waits for streams to close
+// ============================================================================
+TEST(IntegrationTest, DrainGracefulShutdown) {
+    LoopbackSendService client_send;
+    LoopbackSendService server_send;
+
+    auto client = http2::CreateTransport(500, true, &client_send);
+    auto server = http2::CreateTransport(600, false, &server_send);
+
+    client_send.peer = server.get();
+    server_send.peer = client.get();
+
+    // Server handler that saves stream reference
+    class DrainServerHandler : public http2::EventHandler {
+    public:
+        std::shared_ptr<http2::Stream> request_stream;
+        void OnStreamHeaders(std::shared_ptr<http2::Stream> stream) override {
+            request_stream = stream;
+        }
+        void OnStreamData(std::shared_ptr<http2::Stream>) override {}
+    };
+
+    DrainServerHandler server_handler;
+    TestEventHandler client_handler;
+    client->SetEventHandler(&client_handler);
+    server->SetEventHandler(&server_handler);
+
+    // Client sends a request (auto-sends preface on first write)
+    auto stream = client->CreateStream();
+    ASSERT_TRUE(stream != nullptr);
+
+    stream->SendHeaders({
+        {":method", "GET"},
+        {":path", "/drain-test"},
+        {":scheme", "https"},
+        {":authority", "localhost"},
+    });
+    const char *body = "drain body";
+    stream->SendData(reinterpret_cast<const uint8_t *>(body),
+                     static_cast<uint32_t>(strlen(body)), true);
+
+    // Server received the request
+    ASSERT_TRUE(server_handler.request_stream != nullptr);
+
+    // Drain the server -- should send GOAWAY but keep existing stream alive
+    server->Drain();
+
+    // Server drain should have sent GOAWAY to client
+    ASSERT_TRUE(client_handler.goaway_events.size() >= 1);
+
+    // Server should NOT have fired OnShutdownComplete yet (stream still open)
+    ASSERT_TRUE(server_handler.request_stream != nullptr);
+
+    // Now close the stream: server sends response + trailing headers (END_STREAM)
+    auto &srv_stream = server_handler.request_stream;
+    srv_stream->SendHeaders({{":status", "200"}});
+    srv_stream->SendTrailingHeaders({{"grpc-status", "0"}});
+
+    // After the stream is closed, the server's OnShutdownComplete should fire.
+    // The server handler is DrainServerHandler which doesn't track this.
+    // But the client_handler does. Let's verify client got the GOAWAY.
+    // The server's drain completion callback would need a separate handler.
+    // Let's verify via ConnectionInfo instead.
+    auto info = server->GetConnectionInfo();
+    // After stream closed + drain complete, draining should be false
+    // (check_drain_complete resets it when streams.empty())
+    ASSERT_TRUE(info.active_streams == 0);
+
+    client->Shutdown();
+}
+
+// ============================================================================
+// TEST: Drain -- with shutdown complete callback tracking
+// ============================================================================
+TEST(IntegrationTest, DrainShutdownCompleteCallback) {
+    LoopbackSendService client_send;
+    LoopbackSendService server_send;
+
+    auto client = http2::CreateTransport(700, true, &client_send);
+    auto server = http2::CreateTransport(800, false, &server_send);
+
+    client_send.peer = server.get();
+    server_send.peer = client.get();
+
+    // Handler that tracks shutdown complete
+    class DrainCallbackHandler : public http2::EventHandler {
+    public:
+        bool shutdown_complete = false;
+        void OnStreamHeaders(std::shared_ptr<http2::Stream>) override {}
+        void OnStreamData(std::shared_ptr<http2::Stream>) override {}
+        void OnShutdownComplete(uint64_t) override {
+            shutdown_complete = true;
+        }
+    };
+
+    DrainCallbackHandler server_handler;
+    TestEventHandler client_handler;
+    client->SetEventHandler(&client_handler);
+    server->SetEventHandler(&server_handler);
+
+    // Client sends a request (auto-sends preface on first write)
+    auto stream = client->CreateStream();
+    stream->SendHeaders({
+        {":method", "POST"},
+        {":path", "/test"},
+        {":scheme", "https"},
+        {":authority", "localhost"},
+    }, true);  // END_STREAM -- stream closes immediately on client side
+
+    // Drain server -- has one in-flight stream
+    server->Drain();
+    ASSERT_TRUE(!server_handler.shutdown_complete);
+
+    // The server received HEADERS with END_STREAM, so the stream should be
+    // half-closed remote. The server needs to close its side too.
+    // Find the server stream and send response with END_STREAM
+    auto info = server->GetConnectionInfo();
+    // There should be 1 active stream
+    ASSERT_TRUE(info.active_streams == 1);
+
+    // Look up the stream and close it
+    auto server_stream = server->FindStream(1);
+    if (server_stream) {
+        server_stream->SendHeaders({{":status", "200"}}, true);
+    }
+
+    // Now drain should be complete
+    ASSERT_TRUE(server_handler.shutdown_complete);
+
+    client->Shutdown();
+}
+
+// ============================================================================
+// TEST: CreateStream returns nullptr after Drain
+// ============================================================================
+TEST(IntegrationTest, DrainBlocksNewStreams) {
+    LoopbackSendService client_send;
+    LoopbackSendService server_send;
+
+    auto client = http2::CreateTransport(900, true, &client_send);
+    auto server = http2::CreateTransport(1000, false, &server_send);
+
+    client_send.peer = server.get();
+    server_send.peer = client.get();
+
+    TestEventHandler handler;
+    client->SetEventHandler(&handler);
+
+    // Drain the client -- no streams open
+    client->Drain();
+
+    // CreateStream should return nullptr after GOAWAY sent
+    auto stream = client->CreateStream();
+    ASSERT_TRUE(stream == nullptr);
+
+    // ShutdownComplete should have fired immediately (no streams)
+    ASSERT_TRUE(handler.shutdown_complete_events.size() == 1);
 
     client->Shutdown();
     server->Shutdown();

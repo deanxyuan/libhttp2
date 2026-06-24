@@ -1,6 +1,6 @@
 /**
  * @file stream.h
- * @brief HTTP/2 stream abstraction — manages per-stream state, headers,
+ * @brief HTTP/2 stream abstraction -- manages per-stream state, headers,
  *        data buffering, priority information, and send operations.
  */
 
@@ -20,7 +20,7 @@
 class http2_connection;
 
 /**
- * @brief HTTP/2 stream — tracks state machine, headers, data, and priority per stream.
+ * @brief HTTP/2 stream -- tracks state machine, headers, data, and priority per stream.
  *
  * Inherits from http2::Stream (public interface) and enable_shared_from_this
  * so that shared_ptr<Stream> can be returned to users and passed to callbacks.
@@ -125,7 +125,7 @@ public:
     uint32_t ErrorCode() const override;
     int CurrentState() const override;
 
-    // Send operations — delegate to http2_connection
+    // Send operations -- delegate to http2_connection
     bool SendHeaders(const std::vector<std::pair<std::string, std::string>> &headers,
                      bool end_stream) override;
     bool SendData(const uint8_t *data, uint32_t size, bool end_stream) override;

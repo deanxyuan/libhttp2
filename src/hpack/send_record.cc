@@ -74,18 +74,28 @@ static int GetMatchingIndex(compressor *c, const mdelem_data &mdel, uint32_t key
         return MDELEM_FULL_MATCH;
     }
 
-    uint32_t hpack_idx_a = c->entries[cuckoo_first].index;
-    uint32_t hpack_idx_b = c->entries[cuckoo_second].index;
+    // Key-only match: verify the key actually matches to avoid false positives
+    // from cuckoo hash collisions between different keys.
+    bool key_match_a = !TableEmptyAt(c->entries, cuckoo_first) &&
+                        c->entries[cuckoo_first].mdel.key == mdel.key;
+    bool key_match_b = !TableEmptyAt(c->entries, cuckoo_second) &&
+                        c->entries[cuckoo_second].mdel.key == mdel.key;
 
-    uint32_t max_idx = std::max(hpack_idx_a, hpack_idx_b);
-    uint32_t min_idx = std::min(hpack_idx_a, hpack_idx_b);
+    if (!key_match_a && !key_match_b) {
+        return MDELEM_NOT_MATCH;
+    }
+
+    uint32_t candidate_a = key_match_a ? c->entries[cuckoo_first].index : 0;
+    uint32_t candidate_b = key_match_b ? c->entries[cuckoo_second].index : 0;
+
+    uint32_t max_idx = std::max(candidate_a, candidate_b);
+    uint32_t min_idx = std::min(candidate_a, candidate_b);
 
     if (min_idx > c->tail_remote_index) {
         *index = min_idx;
     } else if (max_idx > c->tail_remote_index) {
         *index = max_idx;
     } else {
-        // never reach
         *index = c->tail_remote_index;
     }
     return MDELEM_KEY_MATCH;
@@ -197,7 +207,9 @@ static slice hpack_encode_header(compressor *c, mdelem_data mdel, bool use_true_
     if (result == MDELEM_FULL_MATCH) {
         return encode_index(idx);
     } else {
-        add_elem(c, mdel, decoder_space_usage, key_hash);
+        // KEY_MATCH: encode with key reference from dynamic table, literal value.
+        // Do NOT add to compressor -- "without indexing" means the decoder won't
+        // add this entry either, so the compressor's tracking stays in sync.
         return encode_without_indexing(mdel, idx);
     }
 }

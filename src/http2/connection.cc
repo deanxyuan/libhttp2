@@ -1,6 +1,6 @@
 /**
  * @file connection.cc
- * @brief HTTP/2 connection implementation — frame dispatch, settings handling,
+ * @brief HTTP/2 connection implementation -- frame dispatch, settings handling,
  *        stream management, and send/receive logic.
  */
 
@@ -181,7 +181,7 @@ http2_connection::http2_connection(http2::SendService *sender, uint64_t cid, boo
     hpack::compressor_set_max_table_size(&_send_record,
                                          _remote_settings[static_cast<size_t>(Http2SettingsId::HeaderTableSize)]);
 
-    _finish_handshake = false;
+    _finish_handshake = client_side;  // only server needs to verify client preface
     _last_stream_id = 0;
 
     _next_frame_limit = false;
@@ -190,18 +190,19 @@ http2_connection::http2_connection(http2::SendService *sender, uint64_t cid, boo
     _received_goaway = false;
     _sent_goaway_stream_id = 0;
     _sent_goaway = false;
+    _draining = false;
 
     _buffered_mode = false;
 }
 
-/** @brief Destructor — releases HPACK compressor resources. */
+/** @brief Destructor -- releases HPACK compressor resources. */
 http2_connection::~http2_connection() {
     hpack::compressor_destroy(&_send_record);
 }
 
 /** @brief Allocate a new local stream ID and register the stream. */
 std::shared_ptr<http2_stream> http2_connection::create_stream() {
-    if (_next_local_stream_id >= HTTP2_MAX_STREAM_ID || _received_goaway) {
+    if (_next_local_stream_id >= HTTP2_MAX_STREAM_ID || _received_goaway || _sent_goaway) {
         return nullptr;
     }
     auto stream = std::make_shared<http2_stream>(_connection_id, _next_local_stream_id, this);
@@ -231,6 +232,7 @@ http2::ConnectionInfo http2_connection::get_connection_info() const {
     info.last_stream_id = _last_stream_id;
     info.received_goaway = _received_goaway;
     info.sent_goaway = _sent_goaway;
+    info.draining = _draining;
     info.connection_window = INITIAL_WINDOW_SIZE;
     return info;
 }
@@ -357,6 +359,7 @@ bool http2_connection::send_rst_stream(uint32_t stream_id, uint32_t error_code) 
     stream->send_rst_stream();
     if (stream->is_closed()) {
         _streams.erase(stream_id);
+        check_drain_complete();
     }
     return true;
 }
@@ -373,6 +376,24 @@ bool http2_connection::send_goaway(uint32_t error_code, uint32_t last_stream_id,
     _sent_goaway_stream_id = last_stream_id;
     _sent_goaway = true;
     return true;
+}
+
+/** @brief Begin a graceful shutdown (drain): send GOAWAY, reject new streams, wait for completion. */
+void http2_connection::drain() {
+    if (_sent_goaway) return;
+    send_goaway(static_cast<uint32_t>(Http2ErrorCode::NoError), _last_stream_id);
+    _draining = true;
+    check_drain_complete();
+}
+
+/** @brief Check if drain is complete (all streams closed) and fire OnShutdownComplete. */
+void http2_connection::check_drain_complete() {
+    if (_draining && _streams.empty()) {
+        _draining = false;
+        if (_event_handler) {
+            _event_handler->OnShutdownComplete(_connection_id);
+        }
+    }
 }
 
 /** @brief Send a PUSH_PROMISE frame. Returns the promised stream. */
@@ -447,7 +468,10 @@ bool http2_connection::stream_send_headers(http2_stream *stream,
     if (end_stream) {
         stream->send_end_stream();
     }
-    if (stream->is_closed()) destroy_stream(stream->stream_id());
+    if (stream->is_closed()) {
+        destroy_stream(stream->stream_id());
+        check_drain_complete();
+    }
     return true;
 }
 
@@ -459,7 +483,10 @@ bool http2_connection::stream_send_data(http2_stream *stream,
     if (!s) return false;
     send_binary_in_data_frame(s, data, size, end_stream);
     if (end_stream) stream->send_end_stream();
-    if (stream->is_closed()) destroy_stream(stream->stream_id());
+    if (stream->is_closed()) {
+        destroy_stream(stream->stream_id());
+        check_drain_complete();
+    }
     return true;
 }
 
@@ -474,7 +501,10 @@ bool http2_connection::stream_send_trailing_headers(http2_stream *stream,
     send_binary_in_headers_frame(s, headers, flags);
     stream->send_headers();
     stream->send_end_stream();
-    if (stream->is_closed()) destroy_stream(stream->stream_id());
+    if (stream->is_closed()) {
+        destroy_stream(stream->stream_id());
+        check_drain_complete();
+    }
     return true;
 }
 
@@ -555,6 +585,7 @@ int http2_connection::package_process(const uint8_t *package, uint32_t package_l
 
     if (stream && stream->is_closed()) {
         destroy_stream(stream->stream_id());
+        check_drain_complete();
     }
     return static_cast<int>(hdr.length + HTTP2_FRAME_HEADER_SIZE);
 }
@@ -629,6 +660,10 @@ void http2_connection::received_headers(std::shared_ptr<http2_stream> &stream,
     }
 
     if (!stream) {
+        // RFC 7540 Section6.8: do not process streams above GOAWAY last_stream_id
+        if (_sent_goaway && frame->hdr.stream_id > _sent_goaway_stream_id) {
+            return;
+        }
         stream = std::make_shared<http2_stream>(_connection_id, frame->hdr.stream_id, this);
         _streams[frame->hdr.stream_id] = stream;
     }
