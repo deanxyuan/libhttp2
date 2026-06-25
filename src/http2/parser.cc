@@ -11,7 +11,6 @@
 #include "src/utils/byte_order.h"
 #include "src/utils/slice.h"
 
-/** @brief Parse a DATA frame payload (RFC 7540, Section 6.1). */
 int parse_http2_frame_data(http2_frame_hdr *hdr, const uint8_t *input, http2_frame_data *frame) {
     /*
         +---------------+
@@ -44,7 +43,6 @@ int parse_http2_frame_data(http2_frame_hdr *hdr, const uint8_t *input, http2_fra
     return static_cast<int>(Http2ErrorCode::NoError);
 }
 
-/** @brief Parse a HEADERS frame payload (RFC 7540, Section 6.2). */
 int parse_http2_frame_headers(http2_frame_hdr *hdr, const uint8_t *input, http2_frame_headers *frame) {
     /*
         +---------------+
@@ -99,7 +97,6 @@ int parse_http2_frame_headers(http2_frame_hdr *hdr, const uint8_t *input, http2_
     return static_cast<int>(Http2ErrorCode::NoError);
 }
 
-/** @brief Parse a PRIORITY frame payload (RFC 7540, Section 6.3). */
 int parse_http2_frame_priority(http2_frame_hdr *hdr, const uint8_t *input, http2_frame_priority *frame) {
     /*
         +-+-------------------------------------------------------------+
@@ -119,7 +116,6 @@ int parse_http2_frame_priority(http2_frame_hdr *hdr, const uint8_t *input, http2
     return static_cast<int>(Http2ErrorCode::NoError);
 }
 
-/** @brief Parse a RST_STREAM frame payload (RFC 7540, Section 6.4). */
 int parse_http2_frame_rst_stream(http2_frame_hdr *hdr, const uint8_t *input, http2_frame_rst_stream *frame) {
     /*
         +---------------------------------------------------------------+
@@ -135,7 +131,6 @@ int parse_http2_frame_rst_stream(http2_frame_hdr *hdr, const uint8_t *input, htt
     return static_cast<int>(Http2ErrorCode::NoError);
 }
 
-/** @brief Parse a SETTINGS frame payload (RFC 7540, Section 6.5). */
 int parse_http2_frame_settings(http2_frame_hdr *hdr, const uint8_t *input, http2_frame_settings *frame) {
     /*
         +-------------------------------+
@@ -166,7 +161,6 @@ int parse_http2_frame_settings(http2_frame_hdr *hdr, const uint8_t *input, http2
     return static_cast<int>(Http2ErrorCode::NoError);
 }
 
-/** @brief Parse a PUSH_PROMISE frame payload (RFC 7540, Section 6.6). */
 int parse_http2_frame_push_promise(http2_frame_hdr *hdr, const uint8_t *input, http2_frame_push_promise *frame) {
     /*
         +---------------+
@@ -201,7 +195,6 @@ int parse_http2_frame_push_promise(http2_frame_hdr *hdr, const uint8_t *input, h
     return static_cast<int>(Http2ErrorCode::NoError);
 }
 
-/** @brief Parse a PING frame payload (RFC 7540, Section 6.7). */
 int parse_http2_frame_ping(http2_frame_hdr *hdr, const uint8_t *input, http2_frame_ping *frame) {
     /*
         +---------------------------------------------------------------+
@@ -218,7 +211,6 @@ int parse_http2_frame_ping(http2_frame_hdr *hdr, const uint8_t *input, http2_fra
     return static_cast<int>(Http2ErrorCode::NoError);
 }
 
-/** @brief Parse a GOAWAY frame payload (RFC 7540, Section 6.8). */
 int parse_http2_frame_goaway(http2_frame_hdr *hdr, const uint8_t *input, http2_frame_goaway *frame) {
     /*
         +-+-------------------------------------------------------------+
@@ -239,7 +231,6 @@ int parse_http2_frame_goaway(http2_frame_hdr *hdr, const uint8_t *input, http2_f
     return static_cast<int>(Http2ErrorCode::NoError);
 }
 
-/** @brief Parse a WINDOW_UPDATE frame payload (RFC 7540, Section 6.9). */
 int parse_http2_frame_window_update(http2_frame_hdr *hdr, const uint8_t *input, http2_frame_window_update *frame) {
     /*
         +-+-------------------------------------------------------------+
@@ -255,7 +246,6 @@ int parse_http2_frame_window_update(http2_frame_hdr *hdr, const uint8_t *input, 
     return static_cast<int>(Http2ErrorCode::NoError);
 }
 
-/** @brief Parse a CONTINUATION frame payload (RFC 7540, Section 6.10). */
 int parse_http2_frame_continuation(http2_frame_hdr *hdr, const uint8_t *input, http2_frame_continuation *frame) {
     /*
         +---------------------------------------------------------------+

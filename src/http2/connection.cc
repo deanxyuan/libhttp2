@@ -20,11 +20,9 @@ const uint8_t http2_connection::PREFACE[24] = {0x50, 0x52, 0x49, 0x20, 0x2a, 0x2
                                                0x54, 0x50, 0x2f, 0x32, 0x2e, 0x30, 0x0d, 0x0a,
                                                0x0d, 0x0a, 0x53, 0x4d, 0x0d, 0x0a, 0x0d, 0x0a};
 
-/** @brief Function pointer type for per-frame-type dispatch handlers. */
 typedef std::shared_ptr<http2_stream> (*internal_forward_func)(http2_connection *,
                                                                http2_frame_hdr *, const uint8_t *);
 
-/** @brief Dispatch a DATA frame: parse and forward to http2_connection::received_data. */
 static std::shared_ptr<http2_stream>
 internal_data_process(http2_connection *conn, http2_frame_hdr *hdr, const uint8_t *package) {
     std::shared_ptr<http2_stream> stream;
@@ -37,7 +35,6 @@ internal_data_process(http2_connection *conn, http2_frame_hdr *hdr, const uint8_
     return stream;
 }
 
-/** @brief Dispatch a HEADERS frame: parse and forward to http2_connection::received_headers. */
 static std::shared_ptr<http2_stream>
 internal_headers_process(http2_connection *conn, http2_frame_hdr *hdr, const uint8_t *package) {
     std::shared_ptr<http2_stream> stream;
@@ -50,7 +47,6 @@ internal_headers_process(http2_connection *conn, http2_frame_hdr *hdr, const uin
     return stream;
 }
 
-/** @brief Dispatch a PRIORITY frame: parse and forward to http2_connection::received_priority. */
 static std::shared_ptr<http2_stream>
 internal_priority_process(http2_connection *conn, http2_frame_hdr *hdr, const uint8_t *package) {
     std::shared_ptr<http2_stream> stream;
@@ -63,7 +59,6 @@ internal_priority_process(http2_connection *conn, http2_frame_hdr *hdr, const ui
     return stream;
 }
 
-/** @brief Dispatch a RST_STREAM frame: parse and forward to http2_connection::received_rst_stream. */
 static std::shared_ptr<http2_stream>
 internal_rst_stream_process(http2_connection *conn, http2_frame_hdr *hdr, const uint8_t *package) {
     std::shared_ptr<http2_stream> stream;
@@ -76,7 +71,6 @@ internal_rst_stream_process(http2_connection *conn, http2_frame_hdr *hdr, const 
     return stream;
 }
 
-/** @brief Dispatch a SETTINGS frame: parse and forward to http2_connection::received_settings. */
 static std::shared_ptr<http2_stream>
 internal_settings_process(http2_connection *conn, http2_frame_hdr *hdr, const uint8_t *package) {
     http2_frame_settings frame;
@@ -85,7 +79,6 @@ internal_settings_process(http2_connection *conn, http2_frame_hdr *hdr, const ui
     return nullptr;
 }
 
-/** @brief Dispatch a PUSH_PROMISE frame: parse and forward to http2_connection::received_push_promise. */
 static std::shared_ptr<http2_stream> internal_push_promise_process(http2_connection *conn,
                                                                    http2_frame_hdr *hdr,
                                                                    const uint8_t *package) {
@@ -99,7 +92,6 @@ static std::shared_ptr<http2_stream> internal_push_promise_process(http2_connect
     return stream;
 }
 
-/** @brief Dispatch a PING frame: parse and forward to http2_connection::received_ping. */
 static std::shared_ptr<http2_stream>
 internal_ping_process(http2_connection *conn, http2_frame_hdr *hdr, const uint8_t *package) {
     http2_frame_ping frame;
@@ -108,7 +100,6 @@ internal_ping_process(http2_connection *conn, http2_frame_hdr *hdr, const uint8_
     return nullptr;
 }
 
-/** @brief Dispatch a GOAWAY frame: parse and forward to http2_connection::received_goaway. */
 static std::shared_ptr<http2_stream>
 internal_goaway_process(http2_connection *conn, http2_frame_hdr *hdr, const uint8_t *package) {
     http2_frame_goaway frame;
@@ -117,7 +108,6 @@ internal_goaway_process(http2_connection *conn, http2_frame_hdr *hdr, const uint
     return nullptr;
 }
 
-/** @brief Dispatch a WINDOW_UPDATE frame: parse and forward to http2_connection::received_window_update. */
 static std::shared_ptr<http2_stream> internal_window_update_process(http2_connection *conn,
                                                                     http2_frame_hdr *hdr,
                                                                     const uint8_t *package) {
@@ -131,7 +121,6 @@ static std::shared_ptr<http2_stream> internal_window_update_process(http2_connec
     return stream;
 }
 
-/** @brief Dispatch a CONTINUATION frame: parse and forward to http2_connection::received_continuation. */
 static std::shared_ptr<http2_stream> internal_continuation_process(http2_connection *conn,
                                                                    http2_frame_hdr *hdr,
                                                                    const uint8_t *package) {
@@ -145,7 +134,6 @@ static std::shared_ptr<http2_stream> internal_continuation_process(http2_connect
     return stream;
 }
 
-/** @brief Lookup table mapping frame type to its dispatch function. */
 static internal_forward_func frame_process_func_array[10] = {
     internal_data_process,         internal_headers_process,  internal_priority_process,
     internal_rst_stream_process,   internal_settings_process, internal_push_promise_process,
@@ -153,7 +141,6 @@ static internal_forward_func frame_process_func_array[10] = {
     internal_continuation_process,
 };
 
-/** @brief Construct an HTTP/2 connection with default settings and HPACK state. */
 http2_connection::http2_connection(http2::SendService *sender, uint64_t cid, bool client_side)
     : _dynamic_table(global_settings_parameters[static_cast<size_t>(Http2SettingsId::HeaderTableSize)].default_value)
     , _sender_service(sender)
@@ -195,12 +182,10 @@ http2_connection::http2_connection(http2::SendService *sender, uint64_t cid, boo
     _buffered_mode = false;
 }
 
-/** @brief Destructor -- releases HPACK compressor resources. */
 http2_connection::~http2_connection() {
     hpack::compressor_destroy(&_send_record);
 }
 
-/** @brief Allocate a new local stream ID and register the stream. */
 std::shared_ptr<http2_stream> http2_connection::create_stream() {
     if (_next_local_stream_id >= HTTP2_MAX_STREAM_ID || _received_goaway || _sent_goaway) {
         return nullptr;
@@ -211,12 +196,10 @@ std::shared_ptr<http2_stream> http2_connection::create_stream() {
     return stream;
 }
 
-/** @brief Remove a stream from the connection's stream map. */
 void http2_connection::destroy_stream(uint32_t stream_id) {
     _streams.erase(stream_id);
 }
 
-/** @brief Look up a stream by its ID. */
 std::shared_ptr<http2_stream> http2_connection::find_stream(uint32_t stream_id) {
     auto it = _streams.find(stream_id);
     if (it == _streams.end()) {
@@ -225,7 +208,6 @@ std::shared_ptr<http2_stream> http2_connection::find_stream(uint32_t stream_id) 
     return it->second;
 }
 
-/** @brief Get a snapshot of connection-level state. */
 http2::ConnectionInfo http2_connection::get_connection_info() const {
     http2::ConnectionInfo info{};
     info.active_streams = static_cast<uint32_t>(_streams.size());
@@ -237,27 +219,22 @@ http2::ConnectionInfo http2_connection::get_connection_info() const {
     return info;
 }
 
-/** @brief Return the connection identifier. */
 uint64_t http2_connection::connection_id() const {
     return _connection_id;
 }
 
-/** @brief Return whether this endpoint is the client side. */
 bool http2_connection::is_client_side() const {
     return _client_side;
 }
 
-/** @brief Check whether the client preface still needs to be verified (server side). */
 bool http2_connection::need_verify_preface() const {
     return !_finish_handshake;
 }
 
-/** @brief Mark the client preface as verified. */
 void http2_connection::verify_preface_done() {
     _finish_handshake = true;
 }
 
-/** @brief Lazily send the HTTP/2 client connection preface + SETTINGS on first send. */
 void http2_connection::ensure_preface_sent() {
     if (!_client_side || _preface_sent) return;
 
@@ -282,7 +259,6 @@ void http2_connection::ensure_preface_sent() {
     _preface_sent = true;
 }
 
-/** @brief Send the initial default SETTINGS frame (auto-called on server after preface verification). */
 void http2_connection::send_initial_settings() {
     if (_initial_settings_sent) return;
     _initial_settings_sent = true;
@@ -302,17 +278,14 @@ void http2_connection::send_initial_settings() {
     _settings_pending = true;  // wait for ACK
 }
 
-/** @brief Set the event handler callback. */
 void http2_connection::set_event_handler(http2::EventHandler *h) {
     _event_handler = h;
 }
 
-/** @brief Set the flow-control event handler callback (nullptr = automatic). */
 void http2_connection::set_flow_control_handler(http2::FlowControlHandler *h) {
     _flow_control = h;
 }
 
-/** @brief Send a PING frame with the given opaque data. */
 bool http2_connection::send_ping(uint64_t info) {
     ensure_preface_sent();
     if (_ping_pending) {
@@ -326,7 +299,6 @@ bool http2_connection::send_ping(uint64_t info) {
     return true;
 }
 
-/** @brief Send a SETTINGS frame with the given key-value pairs. */
 bool http2_connection::send_settings(const std::vector<std::pair<uint16_t, uint32_t>> &settings) {
     ensure_preface_sent();
     if (settings.empty()) return false;
@@ -350,7 +322,6 @@ bool http2_connection::send_settings(const std::vector<std::pair<uint16_t, uint3
     return true;
 }
 
-/** @brief Send a RST_STREAM frame to terminate a stream. */
 bool http2_connection::send_rst_stream(uint32_t stream_id, uint32_t error_code) {
     auto stream = find_stream(stream_id);
     if (!stream) return false;
@@ -364,7 +335,6 @@ bool http2_connection::send_rst_stream(uint32_t stream_id, uint32_t error_code) 
     return true;
 }
 
-/** @brief Send a GOAWAY frame to initiate connection shutdown. */
 bool http2_connection::send_goaway(uint32_t error_code, uint32_t last_stream_id,
                                    const std::string &debug) {
     if (last_stream_id == 0) {
@@ -378,7 +348,6 @@ bool http2_connection::send_goaway(uint32_t error_code, uint32_t last_stream_id,
     return true;
 }
 
-/** @brief Begin a graceful shutdown (drain): send GOAWAY, reject new streams, wait for completion. */
 void http2_connection::drain() {
     if (_sent_goaway) return;
     send_goaway(static_cast<uint32_t>(Http2ErrorCode::NoError), _last_stream_id);
@@ -386,7 +355,6 @@ void http2_connection::drain() {
     check_drain_complete();
 }
 
-/** @brief Check if drain is complete (all streams closed) and fire OnShutdownComplete. */
 void http2_connection::check_drain_complete() {
     if (_draining && _streams.empty()) {
         _draining = false;
@@ -396,7 +364,6 @@ void http2_connection::check_drain_complete() {
     }
 }
 
-/** @brief Send a PUSH_PROMISE frame. Returns the promised stream. */
 std::shared_ptr<http2_stream> http2_connection::send_push_promise(
     http2_stream *request_stream,
     const std::vector<std::pair<std::string, std::string>> &headers) {
@@ -425,7 +392,6 @@ std::shared_ptr<http2_stream> http2_connection::send_push_promise(
     return promised;
 }
 
-/** @brief Send a WINDOW_UPDATE frame for connection or stream flow control. */
 bool http2_connection::send_window_update(uint32_t stream_id, const http2::WindowUpdate &wu) {
     ensure_preface_sent();
     uint32_t conn_inc = wu.connection_window_size_increment & 0x7fffffff;
@@ -455,7 +421,6 @@ bool http2_connection::send_window_update(uint32_t stream_id, const http2::Windo
 
 // === Stream-level send operations (called by http2_stream) ===
 
-/** @brief Send HEADERS frame on behalf of a stream. */
 bool http2_connection::stream_send_headers(http2_stream *stream,
     const std::vector<std::pair<std::string, std::string>> &headers, bool end_stream) {
     ensure_preface_sent();
@@ -475,7 +440,6 @@ bool http2_connection::stream_send_headers(http2_stream *stream,
     return true;
 }
 
-/** @brief Send DATA frames on behalf of a stream. */
 bool http2_connection::stream_send_data(http2_stream *stream,
     const uint8_t *data, uint32_t size, bool end_stream) {
     ensure_preface_sent();
@@ -490,7 +454,6 @@ bool http2_connection::stream_send_data(http2_stream *stream,
     return true;
 }
 
-/** @brief Send trailing HEADERS frame (with END_STREAM) on behalf of a stream. */
 bool http2_connection::stream_send_trailing_headers(http2_stream *stream,
     const std::vector<std::pair<std::string, std::string>> &headers) {
     ensure_preface_sent();
@@ -508,12 +471,10 @@ bool http2_connection::stream_send_trailing_headers(http2_stream *stream,
     return true;
 }
 
-/** @brief Send RST_STREAM on behalf of a stream. */
 bool http2_connection::stream_send_rst_stream(http2_stream *stream, uint32_t error_code) {
     return send_rst_stream(stream->stream_id(), error_code);
 }
 
-/** @brief HPACK-encode headers and send them in a HEADERS frame. */
 void http2_connection::send_binary_in_headers_frame(
     std::shared_ptr<http2_stream> &stream,
     const std::vector<std::pair<std::string, std::string>> &headers, int flags) {
@@ -533,7 +494,6 @@ void http2_connection::send_binary_in_headers_frame(
     send_http2_frame(&frame);
 }
 
-/** @brief Send binary data in a DATA frame with flow control. */
 void http2_connection::send_binary_in_data_frame(std::shared_ptr<http2_stream> &stream,
                                                  const uint8_t *data, uint32_t size,
                                                  bool end_of_stream) {
@@ -549,7 +509,6 @@ void http2_connection::send_binary_in_data_frame(std::shared_ptr<http2_stream> &
     send_http2_frame(&frame);
 }
 
-/** @brief Process a single complete HTTP/2 frame from the raw data buffer. */
 int http2_connection::package_process(const uint8_t *package, uint32_t package_length) {
     assert(package_length >= HTTP2_FRAME_HEADER_SIZE);
 
@@ -590,7 +549,6 @@ int http2_connection::package_process(const uint8_t *package, uint32_t package_l
     return static_cast<int>(hdr.length + HTTP2_FRAME_HEADER_SIZE);
 }
 
-/** @brief Handle a received DATA frame. */
 void http2_connection::received_data(std::shared_ptr<http2_stream> &stream,
                                      http2_frame_data *frame) {
     if (frame->pad_len >= frame->hdr.length) {
@@ -625,7 +583,6 @@ void http2_connection::received_data(std::shared_ptr<http2_stream> &stream,
     }
 }
 
-/** @brief Handle a received HEADERS frame (may create a new stream). */
 void http2_connection::received_headers(std::shared_ptr<http2_stream> &stream,
                                         http2_frame_headers *frame) {
     if (frame->hdr.stream_id == 0) {
@@ -683,7 +640,6 @@ void http2_connection::received_headers(std::shared_ptr<http2_stream> &stream,
     }
 }
 
-/** @brief Handle a received PRIORITY frame. */
 void http2_connection::received_priority(std::shared_ptr<http2_stream> &stream,
                                          http2_frame_priority *frame) {
     if (frame->hdr.length != 5) {
@@ -707,7 +663,6 @@ void http2_connection::received_priority(std::shared_ptr<http2_stream> &stream,
     }
 }
 
-/** @brief Handle a received RST_STREAM frame. */
 void http2_connection::received_rst_stream(std::shared_ptr<http2_stream> &stream,
                                            http2_frame_rst_stream *frame) {
     if (frame->hdr.length != 4) {
@@ -722,7 +677,6 @@ void http2_connection::received_rst_stream(std::shared_ptr<http2_stream> &stream
     }
 }
 
-/** @brief Handle a received SETTINGS frame (or SETTINGS ACK). */
 void http2_connection::received_settings(http2_frame_settings *frame) {
     if (frame->hdr.length % 6) {
         send_goaway(static_cast<uint32_t>(Http2ErrorCode::FrameSizeError));
@@ -785,7 +739,6 @@ void http2_connection::received_settings(http2_frame_settings *frame) {
     send_http2_frame(&settings_ack);
 }
 
-/** @brief Handle a received PUSH_PROMISE frame. */
 void http2_connection::received_push_promise(std::shared_ptr<http2_stream> &stream,
                                              http2_frame_push_promise *frame) {
     if (frame->pad_len >= frame->hdr.length) {
@@ -835,7 +788,6 @@ void http2_connection::received_push_promise(std::shared_ptr<http2_stream> &stre
     }
 }
 
-/** @brief Handle a received PING frame (send ACK if not already an ACK). */
 void http2_connection::received_ping(http2_frame_ping *frame) {
     if (frame->hdr.length != 8) {
         send_goaway(static_cast<uint32_t>(Http2ErrorCode::FrameSizeError));
@@ -862,7 +814,6 @@ void http2_connection::received_ping(http2_frame_ping *frame) {
     }
 }
 
-/** @brief Handle a received GOAWAY frame. */
 void http2_connection::received_goaway(http2_frame_goaway *frame) {
     if (frame->hdr.stream_id) {
         send_goaway(static_cast<uint32_t>(Http2ErrorCode::ProtocolError));
@@ -889,7 +840,6 @@ void http2_connection::received_goaway(http2_frame_goaway *frame) {
     }
 }
 
-/** @brief Handle a received WINDOW_UPDATE frame. */
 void http2_connection::received_window_update(std::shared_ptr<http2_stream> &stream,
                                               http2_frame_window_update *frame) {
     if (frame->hdr.length != 4) {
@@ -910,7 +860,6 @@ void http2_connection::received_window_update(std::shared_ptr<http2_stream> &str
     _flow_control->OnWindowUpdate(_connection_id, frame->hdr.stream_id, frame->window_size_inc);
 }
 
-/** @brief Handle a received CONTINUATION frame (appends to incomplete HEADERS). */
 void http2_connection::received_continuation(std::shared_ptr<http2_stream> &stream,
                                              http2_frame_continuation *frame) {
     if (!_next_frame_limit) {
@@ -944,7 +893,6 @@ void http2_connection::received_continuation(std::shared_ptr<http2_stream> &stre
     }
 }
 
-/** @brief Notify the event handler that a stream has been closed. */
 void http2_connection::notify_stream_closed(std::shared_ptr<http2_stream> &stream,
                                             uint32_t error_code) {
     if (_event_handler) {
@@ -952,7 +900,6 @@ void http2_connection::notify_stream_closed(std::shared_ptr<http2_stream> &strea
     }
 }
 
-/** @brief Send raw binary data from a slice_buffer via the SendService. */
 int http2_connection::send_raw_data(const slice_buffer &sb) {
     if (_buffered_mode) {
         buffer_raw_data(sb);
@@ -968,7 +915,6 @@ int http2_connection::send_raw_data(const slice_buffer &sb) {
     return total;
 }
 
-/** @brief Send raw binary data from a single slice via the SendService. */
 int http2_connection::send_raw_data(slice s) {
     if (_buffered_mode) {
         buffer_raw_data(s);
@@ -977,12 +923,10 @@ int http2_connection::send_raw_data(slice s) {
     return _sender_service->SendRawData(_connection_id, s.data(), s.size());
 }
 
-/** @brief Enable or disable send buffering. */
 void http2_connection::set_buffered_mode(bool enable) {
     _buffered_mode = enable;
 }
 
-/** @brief Append data to the send buffer instead of sending immediately. */
 void http2_connection::buffer_raw_data(slice s) {
     _send_buffer.add_slice(std::move(s));
 }
@@ -993,7 +937,6 @@ void http2_connection::buffer_raw_data(const slice_buffer &sb) {
     }
 }
 
-/** @brief Flush accumulated buffered data via SendRawData. */
 bool http2_connection::flush_buffer() {
     if (_send_buffer.empty()) return true;
     // Temporarily disable buffered mode so send_raw_data actually sends.
@@ -1005,47 +948,38 @@ bool http2_connection::flush_buffer() {
     return ret >= 0;
 }
 
-/** @brief Serialize and send a DATA frame (may split into multiple frames). */
 void http2_connection::send_http2_frame(http2_frame_data *frame) {
     slice_buffer sb = pack_http2_frame_data(frame, local_settings(static_cast<size_t>(Http2SettingsId::MaxFrameSize)));
     send_raw_data(sb);
 }
-/** @brief Serialize and send a HEADERS frame. */
 void http2_connection::send_http2_frame(http2_frame_headers *frame) {
     slice s = pack_http2_frame_headers(frame);
     send_raw_data(s);
 }
-/** @brief Serialize and send a PRIORITY frame. */
 void http2_connection::send_http2_frame(http2_frame_priority *frame) {
     slice s = pack_http2_frame_priority(frame);
     send_raw_data(s);
 }
-/** @brief Serialize and send a RST_STREAM frame. */
 void http2_connection::send_http2_frame(http2_frame_rst_stream *frame) {
     slice s = pack_http2_frame_rst_stream(frame);
     send_raw_data(s);
 }
-/** @brief Serialize and send a SETTINGS frame. */
 void http2_connection::send_http2_frame(http2_frame_settings *frame) {
     slice s = pack_http2_frame_settings(frame);
     send_raw_data(s);
 }
-/** @brief Serialize and send a PUSH_PROMISE frame. */
 void http2_connection::send_http2_frame(http2_frame_push_promise *frame) {
     slice s = pack_http2_frame_push_promise(frame);
     send_raw_data(s);
 }
-/** @brief Serialize and send a PING frame. */
 void http2_connection::send_http2_frame(http2_frame_ping *frame) {
     slice s = pack_http2_frame_ping(frame);
     send_raw_data(s);
 }
-/** @brief Serialize and send a GOAWAY frame. */
 void http2_connection::send_http2_frame(http2_frame_goaway *frame) {
     slice s = pack_http2_frame_goaway(frame);
     send_raw_data(s);
 }
-/** @brief Serialize and send a WINDOW_UPDATE frame. */
 void http2_connection::send_http2_frame(http2_frame_window_update *frame) {
     slice s = pack_http2_frame_window_update(frame);
     send_raw_data(s);

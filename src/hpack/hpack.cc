@@ -25,19 +25,6 @@ bool string_starts_with(const std::string &str, char c) {
 // -------------------------------------------
 namespace hpack {
 
-/**
- * @brief Decode an HPACK-encoded HEADERS frame payload into key-value metadata pairs.
- *
- * Supports indexed header fields (Section 6.1), literal with incremental indexing
- * (Section 6.2.1), literal without indexing (Section 6.2.2), literal never indexed
- * (Section 6.2.3), and dynamic table size updates (Section 6.3).
- *
- * @param buf             Pointer to the HEADERS frame payload bytes.
- * @param buf_len         Length of the payload in bytes.
- * @param dynamic_table   Dynamic table service for index lookups and table updates.
- * @param decoded_headers Output vector receiving the decoded metadata elements.
- * @return Http2ErrorCode cast to int (0 = NoError, nonzero = error).
- */
 int decode_headers(const uint8_t *buf, uint32_t buf_len, dynamic_table_service *dynamic_table,
                    std::vector<mdelem_data> *decoded_headers) {
     static_metadata *hpack_static_headers = get_static_mdelem_table();

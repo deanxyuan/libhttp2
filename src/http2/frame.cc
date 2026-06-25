@@ -21,7 +21,6 @@ void http2_frame_header_pack(uint8_t *buf, const http2_frame_hdr *hd) {
     // ignore hd->reserved for now
 }
 
-/** @brief Deserialize a 9-byte wire-format buffer into an HTTP/2 frame header. */
 void http2_frame_header_unpack(http2_frame_hdr *hd, const uint8_t *buf) {
     hd->length = get_uint32_from_be_stream(&buf[0]) >> 8;
     hd->type = buf[3];
@@ -30,7 +29,6 @@ void http2_frame_header_unpack(http2_frame_hdr *hd, const uint8_t *buf) {
     hd->reserved = 0;
 }
 
-/** @brief Initialize an HTTP/2 frame header with the given fields. */
 void http2_frame_header_init(http2_frame_hdr *hd, size_t length, uint8_t type, uint8_t flags, uint32_t stream_id) {
     hd->length = length;
     hd->type = type;
@@ -39,7 +37,6 @@ void http2_frame_header_init(http2_frame_hdr *hd, size_t length, uint8_t type, u
     hd->reserved = 0;
 }
 
-/** @brief Build a SETTINGS frame from a list of setting entries. */
 http2_frame_settings build_http2_frame_settings(int flags, std::vector<http2_settings_entry> *settings) {
     http2_frame_settings frame;
     if (flags & static_cast<uint8_t>(Http2FrameFlag::Ack)) {
@@ -52,7 +49,6 @@ http2_frame_settings build_http2_frame_settings(int flags, std::vector<http2_set
     return frame;
 }
 
-/** @brief Build a PING frame from 8 bytes of opaque data. */
 http2_frame_ping build_http2_frame_ping(uint8_t *data, bool ack) {
     http2_frame_ping frame;
     uint8_t flags = ack ? static_cast<uint8_t>(Http2FrameFlag::Ack) : 0;
@@ -61,7 +57,6 @@ http2_frame_ping build_http2_frame_ping(uint8_t *data, bool ack) {
     return frame;
 }
 
-/** @brief Build a GOAWAY frame with error code and optional debug data. */
 http2_frame_goaway build_http2_frame_goaway(uint32_t last_stream_id, uint32_t error_code, const slice &debug) {
     http2_frame_goaway frame;
     http2_frame_header_init(&frame.hdr, 8 + debug.size(), static_cast<uint8_t>(Http2FrameType::GoAway), 0, 0);
@@ -72,7 +67,6 @@ http2_frame_goaway build_http2_frame_goaway(uint32_t last_stream_id, uint32_t er
     return frame;
 }
 
-/** @brief Build a WINDOW_UPDATE frame for a given stream. */
 http2_frame_window_update build_http2_frame_window_update(uint32_t stream_id, uint32_t window_size_inc) {
     http2_frame_window_update frame;
     http2_frame_header_init(&frame.hdr, 4, static_cast<uint8_t>(Http2FrameType::WindowUpdate), 0, stream_id);
@@ -81,7 +75,6 @@ http2_frame_window_update build_http2_frame_window_update(uint32_t stream_id, ui
     return frame;
 }
 
-/** @brief Build a DATA frame carrying body data for a stream. */
 http2_frame_data build_http2_frame_data(uint32_t stream_id, int flags, const slice &data) {
     http2_frame_data frame;
     http2_frame_header_init(&frame.hdr, data.size(), static_cast<uint8_t>(Http2FrameType::Data), flags, stream_id);
@@ -90,7 +83,6 @@ http2_frame_data build_http2_frame_data(uint32_t stream_id, int flags, const sli
     return frame;
 }
 
-/** @brief Build a HEADERS frame with an HPACK-encoded header block. */
 http2_frame_headers build_http2_frame_headers(uint32_t stream_id, int flags, const slice &header_block,
                                               http2_priority_spec *spec) {
     if (!spec) {
@@ -113,7 +105,6 @@ http2_frame_headers build_http2_frame_headers(uint32_t stream_id, int flags, con
     return frame;
 }
 
-/** @brief Build a PUSH_PROMISE frame to pre-announce a server push stream. */
 http2_frame_push_promise build_http2_frame_push_promise(uint32_t associated_stream_id, uint32_t promised_stream_id, int flags, const slice &header_block) {
     http2_frame_push_promise frame;
     http2_frame_header_init(&frame.hdr, 4 + header_block.size(), static_cast<uint8_t>(Http2FrameType::PushPromise), flags, associated_stream_id);
@@ -124,7 +115,6 @@ http2_frame_push_promise build_http2_frame_push_promise(uint32_t associated_stre
     return frame;
 }
 
-/** @brief Build a RST_STREAM frame to terminate a stream. */
 http2_frame_rst_stream build_http2_frame_rst_stream(uint32_t stream_id, int flags, uint32_t error_code) {
     http2_frame_rst_stream frame;
     http2_frame_header_init(&frame.hdr, 4, static_cast<uint8_t>(Http2FrameType::RstStream), flags, stream_id);
@@ -132,7 +122,6 @@ http2_frame_rst_stream build_http2_frame_rst_stream(uint32_t stream_id, int flag
     return frame;
 }
 
-/** @brief Build a PRIORITY frame to set stream priority. */
 http2_frame_priority build_http2_frame_priority(uint32_t stream_id, int flags, const http2_priority_spec &spec) {
     http2_frame_priority frame;
     http2_frame_header_init(&frame.hdr, 5, static_cast<uint8_t>(Http2FrameType::Priority), flags, stream_id);

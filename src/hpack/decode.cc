@@ -10,19 +10,6 @@
 
 namespace hpack {
 
-/**
- * @brief Decode a variable-length integer with N-bit prefix mask (RFC 7541 Section 5.1).
- *
- * Returns nullptr if the encoded value extends past src_end. The decoded value
- * may overflow uint32_t if the encoding is malicious; callers should validate
- * the result in context.
- *
- * @param src     Pointer to the first byte of the encoded integer.
- * @param src_end Pointer to one past the last readable byte.
- * @param dst     Output parameter receiving the decoded integer.
- * @param mask    N-bit prefix mask (e.g. 0x7f for 7-bit, 0x0f for 4-bit).
- * @return Pointer to the byte after the decoded integer, or nullptr on error.
- */
 const uint8_t *decode_uint32(const uint8_t *src, const uint8_t *src_end, uint32_t &dst, uint8_t mask) {
     dst = *src & mask;
     if (dst == static_cast<uint32_t>(mask)) {
@@ -63,17 +50,6 @@ const uint8_t *decode_string(const uint8_t *src, size_t src_len, std::string &va
     return src + src_len;
 }
 
-/**
- * @brief Parse an HPACK string literal (Huffman or raw) from the buffer.
- *
- * Reads the length prefix, checks the Huffman flag (bit 7 of the first byte),
- * and decodes the string accordingly.
- *
- * @param dst     Output string receiving the parsed value.
- * @param buf     Pointer to the first byte of the string encoding.
- * @param buf_end Pointer to one past the last readable byte.
- * @return Pointer past the consumed string bytes, or nullptr on error.
- */
 const uint8_t *parse_string(std::string &dst, const uint8_t *buf, const uint8_t *buf_end) {
     if (buf >= buf_end) return nullptr;
     uint32_t str_len = 0;
@@ -101,18 +77,6 @@ const uint8_t *parse_string(std::string &dst, const uint8_t *buf, const uint8_t 
     return buf;
 }
 
-/**
- * @brief Parse an HPACK header name string, rejecting uppercase characters.
- *
- * Like parse_string, but for header field names. Non-Huffman-encoded names
- * containing uppercase ASCII characters are rejected (returns nullptr) per
- * RFC 7541 Section 5.2.
- *
- * @param dst     Output string receiving the parsed header name.
- * @param buf     Pointer to the first byte of the string encoding.
- * @param buf_end Pointer to one past the last readable byte.
- * @return Pointer past the consumed string bytes, or nullptr on error.
- */
 const uint8_t *parse_string_key(std::string &dst, const uint8_t *buf, const uint8_t *buf_end) {
     if (buf >= buf_end) return nullptr;
     bool huffman_decode = *buf & 0x80;

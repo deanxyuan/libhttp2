@@ -9,10 +9,6 @@
 #include <string.h>
 #include "src/utils/byte_order.h"
 
-/** @brief Pack a DATA frame, splitting into chunks that respect max_frame_size.
- *
- *  END_STREAM is only set on the last chunk. Intermediate chunks have the flag cleared.
- */
 slice_buffer pack_http2_frame_data(http2_frame_data *frame, uint32_t max_frame_size) {
     http2_frame_hdr hdr = frame->hdr;
     hdr.flags &= ~static_cast<uint8_t>(Http2FrameFlag::Padded);
@@ -47,7 +43,6 @@ slice_buffer pack_http2_frame_data(http2_frame_data *frame, uint32_t max_frame_s
     return buffer;
 }
 
-/** @brief Pack a HEADERS frame into a single wire-format buffer. */
 slice pack_http2_frame_headers(http2_frame_headers *frame) {
     size_t frame_length = HTTP2_FRAME_HEADER_SIZE + frame->hdr.length;
     slice frame_data = MakeSliceByLength(frame_length);
@@ -77,7 +72,6 @@ slice pack_http2_frame_headers(http2_frame_headers *frame) {
     return frame_data;
 }
 
-/** @brief Pack a PRIORITY frame into a single wire-format buffer. */
 slice pack_http2_frame_priority(http2_frame_priority *frame) {
     constexpr size_t frame_length = HTTP2_FRAME_HEADER_SIZE + 5;
 
@@ -104,7 +98,6 @@ slice pack_http2_frame_priority(http2_frame_priority *frame) {
     return frame_data;
 }
 
-/** @brief Pack a RST_STREAM frame into a single wire-format buffer. */
 slice pack_http2_frame_rst_stream(http2_frame_rst_stream *frame) {
     constexpr size_t frame_length = HTTP2_FRAME_HEADER_SIZE + 4;
 
@@ -118,7 +111,6 @@ slice pack_http2_frame_rst_stream(http2_frame_rst_stream *frame) {
     return frame_data;
 }
 
-/** @brief Pack a SETTINGS frame into a single wire-format buffer. */
 slice pack_http2_frame_settings(http2_frame_settings *frame) {
     size_t frame_length = HTTP2_FRAME_HEADER_SIZE + frame->hdr.length;
     slice frame_data = MakeSliceByLength(frame_length);
@@ -136,7 +128,6 @@ slice pack_http2_frame_settings(http2_frame_settings *frame) {
     return frame_data;
 }
 
-/** @brief Pack a PUSH_PROMISE frame into a single wire-format buffer. */
 slice pack_http2_frame_push_promise(http2_frame_push_promise *frame) {
     size_t frame_length = HTTP2_FRAME_HEADER_SIZE + frame->hdr.length;
     slice frame_data = MakeSliceByLength(frame_length);
@@ -159,7 +150,6 @@ slice pack_http2_frame_push_promise(http2_frame_push_promise *frame) {
     return frame_data;
 }
 
-/** @brief Pack a PING frame into a single wire-format buffer. */
 slice pack_http2_frame_ping(http2_frame_ping *frame) {
     constexpr size_t frame_length = HTTP2_FRAME_HEADER_SIZE + 8;
     slice frame_data = MakeSliceByLength(frame_length);
@@ -171,7 +161,6 @@ slice pack_http2_frame_ping(http2_frame_ping *frame) {
     return frame_data;
 }
 
-/** @brief Pack a GOAWAY frame into a single wire-format buffer. */
 slice pack_http2_frame_goaway(http2_frame_goaway *frame) {
     size_t frame_length = HTTP2_FRAME_HEADER_SIZE + frame->hdr.length;
     slice frame_data = MakeSliceByLength(frame_length);
@@ -191,7 +180,6 @@ slice pack_http2_frame_goaway(http2_frame_goaway *frame) {
     return frame_data;
 }
 
-/** @brief Pack a WINDOW_UPDATE frame into a single wire-format buffer. */
 slice pack_http2_frame_window_update(http2_frame_window_update *frame) {
     constexpr size_t frame_length = HTTP2_FRAME_HEADER_SIZE + 4;
     slice frame_data = MakeSliceByLength(frame_length);
@@ -205,7 +193,6 @@ slice pack_http2_frame_window_update(http2_frame_window_update *frame) {
     return frame_data;
 }
 
-/** @brief Pack a CONTINUATION frame into a single wire-format buffer. */
 slice pack_http2_frame_continuation(http2_frame_continuation *frame) {
     size_t frame_length = HTTP2_FRAME_HEADER_SIZE + frame->hdr.length;
     slice frame_data = MakeSliceByLength(frame_length);

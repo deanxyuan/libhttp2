@@ -9,13 +9,6 @@
 
 namespace hpack {
 
-/**
- * @brief Write an HPACK variable-length integer into a buffer.
- *
- * @param buf  Destination buffer (must have sufficient space).
- * @param I    The integer value to encode.
- * @param mask N-bit prefix mask.
- */
 void uint16_encode_impl(uint8_t *buf, uint32_t I, uint8_t mask) {
     if (I < mask) {
         *buf = static_cast<uint8_t>(I);
@@ -31,13 +24,6 @@ void uint16_encode_impl(uint8_t *buf, uint32_t I, uint8_t mask) {
     *buf++ = static_cast<uint8_t>(I);
 }
 
-/**
- * @brief Calculate the byte length needed to encode an integer with HPACK encoding.
- *
- * @param I    The integer value.
- * @param mask N-bit prefix mask.
- * @return Number of bytes required for the encoded representation.
- */
 size_t uint16_encode_length(uint32_t I, uint8_t mask) {
     if (I < mask) {
         return 1;
@@ -54,13 +40,6 @@ size_t uint16_encode_length(uint32_t I, uint8_t mask) {
     return count;
 }
 
-/**
- * @brief Allocate a slice and encode an integer into it using HPACK encoding.
- *
- * @param I    The integer value to encode.
- * @param mask N-bit prefix mask.
- * @return A slice containing the encoded bytes.
- */
 slice encode_uint16(uint32_t I, uint8_t mask) {
     size_t bytes = uint16_encode_length(I, mask);
     slice s = MakeSliceByLength(bytes);
@@ -69,13 +48,6 @@ slice encode_uint16(uint32_t I, uint8_t mask) {
     return s;
 }
 
-/**
- * @brief Encode a literal metadata element (key + value) with a given type byte prefix.
- *
- * @param mdel The metadata element to encode.
- * @param type The type byte to write as the first byte (e.g. 0x40 for incremental indexing).
- * @return A slice containing the full encoded representation.
- */
 slice encode_mdelem_data_impl(const mdelem_data &mdel, uint8_t type) {
     size_t key_len_size = uint16_encode_length(mdel.key.size(), INT_MASK(7));
     size_t value_len_size = uint16_encode_length(mdel.value.size(), INT_MASK(7));
@@ -103,12 +75,6 @@ slice encode_mdelem_data_impl(const mdelem_data &mdel, uint8_t type) {
     return s;
 }
 
-/**
- * @brief Encode an indexed header field representation (RFC 7541 Section 6.1).
- *
- * @param index Table index of the header field.
- * @return A slice containing the encoded indexed representation.
- */
 slice encode_index(uint32_t index) {
     /*
           0   1   2   3   4   5   6   7
@@ -123,12 +89,6 @@ slice encode_index(uint32_t index) {
     return s;
 }
 
-/**
- * @brief Encode a dynamic table size update (RFC 7541 Section 6.3).
- *
- * @param max_size The new maximum dynamic table size.
- * @return A slice containing the encoded size update representation.
- */
 slice encode_update_max_size(uint32_t max_size) {
     /*
           0   1   2   3   4   5   6   7
@@ -143,12 +103,6 @@ slice encode_update_max_size(uint32_t max_size) {
     return s;
 }
 
-/**
- * @brief Encode a literal header field with incremental indexing (RFC 7541 Section 6.2.1).
- *
- * @param mdel The metadata element to encode.
- * @return A slice containing the encoded representation.
- */
 slice encode_with_incremental_indexing(const mdelem_data &mdel) {
     /*
           0   1   2   3   4   5   6   7
@@ -168,13 +122,6 @@ slice encode_with_incremental_indexing(const mdelem_data &mdel) {
     return encode_mdelem_data_impl(mdel, 0x40);
 }
 
-/**
- * @brief Encode a literal header field without indexing, using a pre-indexed key name (RFC 7541 Section 6.2.2).
- *
- * @param mdel      The metadata element whose value to encode.
- * @param key_index The table index of the header name.
- * @return A slice containing the encoded representation.
- */
 slice encode_without_indexing(const mdelem_data &mdel, uint32_t key_index) {
     /*
           0   1   2   3   4   5   6   7
@@ -205,12 +152,6 @@ slice encode_without_indexing(const mdelem_data &mdel, uint32_t key_index) {
     return s;
 }
 
-/**
- * @brief Encode a literal header field without indexing, with literal key and value (RFC 7541 Section 6.2.2).
- *
- * @param mdel The metadata element to encode.
- * @return A slice containing the encoded representation.
- */
 slice encode_without_indexing(const mdelem_data &mdel) {
     /*
           0   1   2   3   4   5   6   7
@@ -230,12 +171,6 @@ slice encode_without_indexing(const mdelem_data &mdel) {
     return encode_mdelem_data_impl(mdel, 0x0);
 }
 
-/**
- * @brief Encode a literal header field never indexed (RFC 7541 Section 6.2.3).
- *
- * @param mdel The metadata element to encode.
- * @return A slice containing the encoded never-indexed representation.
- */
 slice encode_never_indexed(const mdelem_data &mdel) {
     /*
           0   1   2   3   4   5   6   7

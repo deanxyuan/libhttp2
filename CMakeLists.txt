@@ -38,6 +38,14 @@ endif()
 option(LIBHTTP2_BUILD_TESTS "Build tests" ON)
 
 option(BUILD_SHARED_LIBS "Build as shared library" OFF)
+
+# Public API uses STL types (std::string, std::vector, etc.), so shared library
+# is not supported on Windows due to MSVC STL ABI instability across versions.
+if(WIN32 AND BUILD_SHARED_LIBS)
+    message(WARNING "LibHttp2 public API uses STL types; forcing static library on Windows")
+    set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
+endif()
+
 option(LIBHTTP2_ENABLE_ASAN "Enable AddressSanitizer" OFF)
 option(LIBHTTP2_ENABLE_UBSAN "Enable UndefinedBehaviorSanitizer" OFF)
 option(LIBHTTP2_ENABLE_TSAN "Enable ThreadSanitizer" OFF)

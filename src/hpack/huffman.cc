@@ -35,13 +35,6 @@
 
 #include "src/utils/byte_order.h"
 
-/**
- * @brief Count the number of bytes required to Huffman-encode the given data.
- *
- * @param src Pointer to the source data.
- * @param len Length of the source data in bytes.
- * @return Number of bytes required for the encoded output.
- */
 size_t http2_head_huffman_encode_count(const uint8_t *src, size_t len) {
     size_t i;
     size_t nbits = 0;
@@ -53,15 +46,6 @@ size_t http2_head_huffman_encode_count(const uint8_t *src, size_t len) {
     return (nbits + 7) / 8;
 }
 
-/**
- * @brief Huffman-encode the source data into the destination buffer.
- *
- * @param dst    Pointer to the destination buffer.
- * @param dstlen Size of the destination buffer in bytes.
- * @param src    Pointer to the source data to encode.
- * @param srclen Length of the source data in bytes.
- * @return Number of bytes written to dst.
- */
 int http2_head_huffman_encode(uint8_t *dst, size_t dstlen, const uint8_t *src, size_t srclen) {
     const http2_huff_sym *sym;
     const uint8_t *end = src + srclen;
@@ -111,25 +95,10 @@ int http2_head_huffman_encode(uint8_t *dst, size_t dstlen, const uint8_t *src, s
     return static_cast<int>(space - dstlen);
 }
 
-/**
- * @brief Initialize a Huffman decoding context to the accepting state.
- *
- * @param ctx Pointer to the decoding context to initialize.
- */
 void http2_head_huffman_decode_context_init(http2_hd_huff_decode_context *ctx) {
     ctx->fstate = HTTP2_HUFF_ACCEPTED;
 }
 
-/**
- * @brief Decode Huffman-encoded data incrementally.
- *
- * @param ctx    Pointer to the Huffman decoding context.
- * @param buf    Pointer to the output buffer for decoded bytes.
- * @param src    Pointer to the encoded input data.
- * @param srclen Length of the encoded input in bytes.
- * @param fin    Nonzero if this is the final block of input.
- * @return Number of decoded bytes written, or -1 on failure.
- */
 int32_t http2_head_huffman_decode(http2_hd_huff_decode_context *ctx, uint8_t *buf, const uint8_t *src, size_t srclen,
                                   int fin) {
     const uint8_t *end = src + srclen;
@@ -164,12 +133,6 @@ int32_t http2_head_huffman_decode(http2_hd_huff_decode_context *ctx, uint8_t *bu
     return bytes;
 }
 
-/**
- * @brief Check whether the Huffman decoding context is in a failure state.
- *
- * @param ctx Pointer to the decoding context.
- * @return Nonzero if the context indicates a decoding failure, zero otherwise.
- */
 int http2_head_huffman_decode_failure_state(http2_hd_huff_decode_context *ctx) {
     return ctx->fstate == 0x100;
 }
