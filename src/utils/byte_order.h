@@ -6,6 +6,7 @@
 #pragma once
 #include <stddef.h>
 #include <stdint.h>
+#include <string.h>
 
 /**
  * @brief Reverses the byte order of an integer value (endian swap).
@@ -15,12 +16,15 @@
  */
 template <typename T>
 T change_byte_order(T value) {
-    uint8_t buf[sizeof(T)] = {0};
-    uint8_t *ptr = reinterpret_cast<uint8_t *>(&value);
+    uint8_t src[sizeof(T)];
+    uint8_t dst[sizeof(T)];
+    memcpy(src, &value, sizeof(T));
     for (size_t i = 0; i < sizeof(T); i++) {
-        buf[i] = ptr[sizeof(T) - i - 1];
+        dst[i] = src[sizeof(T) - i - 1];
     }
-    return *reinterpret_cast<T *>(buf);
+    T result;
+    memcpy(&result, dst, sizeof(T));
+    return result;
 }
 
 /**

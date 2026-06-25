@@ -5,12 +5,45 @@
 
 #include "src/hpack/static_metadata.h"
 #include <chrono>
+#include <mutex>
+#include <unordered_map>
+#include <unordered_set>
 #include "src/utils/useful.h"
 #include "src/utils/murmur_hash.h"
 
 #define METADATA_KV_HASH(k_hash, v_hash) (ROTL((k_hash), 2) ^ (v_hash))
 
 static uint32_t g_seed = 0;
+static std::once_flag g_seed_flag;
+static std::mutex g_ctx_mutex;
+
+struct MdelemHash {
+    size_t operator()(const hpack::mdelem_data &md) const { return mdelem_data_hash(md); }
+};
+
+struct MdelemEqual {
+    bool operator()(const hpack::mdelem_data &a, const hpack::mdelem_data &b) const {
+        return a.key == b.key && a.value == b.value;
+    }
+};
+
+struct SliceHash {
+    size_t operator()(const slice &s) const { return mdelem_kv_hash(s); }
+};
+
+struct SliceEqual {
+    bool operator()(const slice &a, const slice &b) const { return a == b; }
+};
+
+static std::unordered_map<hpack::mdelem_data, uint32_t, MdelemHash, MdelemEqual> g_full_match_map;
+static std::unordered_set<slice, SliceHash, SliceEqual> g_key_exists_set;
+
+static void init_g_seed() {
+    auto d = std::chrono::system_clock::now().time_since_epoch();
+    auto n = std::chrono::duration_cast<std::chrono::nanoseconds>(d);
+    uint32_t seconds = 1 * 1000 * 1000000;
+    g_seed = n.count() % seconds;
+}
 
 /**
  * @brief Compute a MurmurHash3 hash for a slice.
@@ -30,12 +63,7 @@ static uint32_t get_slice_hash(const T &s) {
  * @return Combined hash value.
  */
 uint32_t mdelem_data_hash(const hpack::mdelem_data &oth) {
-    if (g_seed == 0) {
-        auto d = std::chrono::system_clock::now().time_since_epoch();
-        auto n = std::chrono::duration_cast<std::chrono::nanoseconds>(d);
-        uint32_t seconds = 1 * 1000 * 1000000;
-        g_seed = n.count() % seconds;
-    }
+    std::call_once(g_seed_flag, init_g_seed);
     uint32_t k_hash = get_slice_hash(oth.key);
     uint32_t v_hash = get_slice_hash(oth.value);
     uint32_t hash = METADATA_KV_HASH(k_hash, v_hash);
@@ -196,15 +224,26 @@ static_metadata *g_static_mdelem_table = nullptr;
  * Safe to call multiple times; subsequent calls are no-ops.
  */
 void init_static_metadata_context(void) {
+    std::lock_guard<std::mutex> lck(g_ctx_mutex);
     if (!hpack::g_static_metadata_ctx) {
         hpack::g_static_metadata_ctx = new hpack::static_metadata_context();
         hpack::g_static_mdelem_table = hpack::g_static_metadata_ctx->static_mdelem_table;
+
+        // Build hash-based lookup tables for O(1) static table lookups
+        for (size_t i = 1; i <= HPACK_STATIC_MDELEM_STANDARD_COUNT; i++) {
+            const auto &md = hpack::g_static_mdelem_table[i].data();
+            g_full_match_map.emplace(md, static_cast<uint32_t>(i));
+            g_key_exists_set.insert(md.key);
+        }
     }
 }
 
 /** @brief Destroy the global static metadata context and free resources. */
 void destroy_static_metadata_context(void) {
+    std::lock_guard<std::mutex> lck(g_ctx_mutex);
     if (hpack::g_static_metadata_ctx) {
+        g_full_match_map.clear();
+        g_key_exists_set.clear();
         delete hpack::g_static_metadata_ctx;
         hpack::g_static_metadata_ctx = nullptr;
         hpack::g_static_mdelem_table = nullptr;
@@ -217,10 +256,9 @@ void destroy_static_metadata_context(void) {
  * @return 1-based index if found, 0 if not found.
  */
 uint32_t full_match_static_mdelem_index(const hpack::mdelem_data &mdel) {
-    for (size_t i = 1; i <= HPACK_STATIC_MDELEM_STANDARD_COUNT; i++) {
-        if (mdel == hpack::g_static_mdelem_table[i].data()) {
-            return i;
-        }
+    auto it = g_full_match_map.find(mdel);
+    if (it != g_full_match_map.end()) {
+        return it->second;
     }
     return 0;
 }
@@ -231,10 +269,5 @@ uint32_t full_match_static_mdelem_index(const hpack::mdelem_data &mdel) {
  * @return True if the key exists in the static table.
  */
 bool check_key_exists(const slice &key) {
-    for (size_t i = 1; i <= HPACK_STATIC_MDELEM_STANDARD_COUNT; i++) {
-        if (key == hpack::g_static_mdelem_table[i].data().key) {
-            return true;
-        }
-    }
-    return false;
+    return g_key_exists_set.find(key) != g_key_exists_set.end();
 }

@@ -6,8 +6,12 @@
 
 #pragma once
 #include <stdint.h>
+#include <assert.h>
 #include <memory>
 #include <map>
+#ifndef NDEBUG
+#include <thread>
+#endif
 
 #include "src/hpack/send_record.h"
 #include "src/hpack/dynamic_metadata.h"
@@ -53,6 +57,9 @@ public:
 
     /** @brief Return whether this endpoint is the client side. */
     bool is_client_side() const;
+
+    /** @brief Return whether the connection was initialized successfully. */
+    bool is_initialized() const { return _init_ok; }
 
     /** @brief Set the event handler callback. */
     void set_event_handler(http2::EventHandler *h);
@@ -214,32 +221,41 @@ private:
         return _local_settings[setting_id];
     }
 
-    /** @brief Serialize and send a DATA frame (may split into multiple frames). */
-    void send_http2_frame(http2_frame_data *);
+    /** @brief Serialize and send a DATA frame (may split into multiple frames).
+     *  @return Total bytes sent, or -1 on error. */
+    int send_http2_frame(http2_frame_data *);
 
-    /** @brief Serialize and send a HEADERS frame. */
-    void send_http2_frame(http2_frame_headers *);
+    /** @brief Serialize and send a HEADERS frame.
+     *  @return Bytes sent, or -1 on error. */
+    int send_http2_frame(http2_frame_headers *);
 
-    /** @brief Serialize and send a PRIORITY frame. */
-    void send_http2_frame(http2_frame_priority *);
+    /** @brief Serialize and send a PRIORITY frame.
+     *  @return Bytes sent, or -1 on error. */
+    int send_http2_frame(http2_frame_priority *);
 
-    /** @brief Serialize and send a RST_STREAM frame. */
-    void send_http2_frame(http2_frame_rst_stream *);
+    /** @brief Serialize and send a RST_STREAM frame.
+     *  @return Bytes sent, or -1 on error. */
+    int send_http2_frame(http2_frame_rst_stream *);
 
-    /** @brief Serialize and send a SETTINGS frame. */
-    void send_http2_frame(http2_frame_settings *);
+    /** @brief Serialize and send a SETTINGS frame.
+     *  @return Bytes sent, or -1 on error. */
+    int send_http2_frame(http2_frame_settings *);
 
-    /** @brief Serialize and send a PUSH_PROMISE frame. */
-    void send_http2_frame(http2_frame_push_promise *);
+    /** @brief Serialize and send a PUSH_PROMISE frame.
+     *  @return Bytes sent, or -1 on error. */
+    int send_http2_frame(http2_frame_push_promise *);
 
-    /** @brief Serialize and send a PING frame. */
-    void send_http2_frame(http2_frame_ping *);
+    /** @brief Serialize and send a PING frame.
+     *  @return Bytes sent, or -1 on error. */
+    int send_http2_frame(http2_frame_ping *);
 
-    /** @brief Serialize and send a GOAWAY frame. */
-    void send_http2_frame(http2_frame_goaway *);
+    /** @brief Serialize and send a GOAWAY frame.
+     *  @return Bytes sent, or -1 on error. */
+    int send_http2_frame(http2_frame_goaway *);
 
-    /** @brief Serialize and send a WINDOW_UPDATE frame. */
-    void send_http2_frame(http2_frame_window_update *);
+    /** @brief Serialize and send a WINDOW_UPDATE frame.
+     *  @return Bytes sent, or -1 on error. */
+    int send_http2_frame(http2_frame_window_update *);
 
     /** @brief Remove a stream from the connection's stream map. */
     void destroy_stream(uint32_t stream_id);
@@ -301,5 +317,16 @@ private:
     std::vector<std::pair<uint16_t, uint32_t>> _request_settings;
 
     bool _buffered_mode;
+    bool _init_ok;
     slice_buffer _send_buffer;
+    int32_t _connection_send_window;
+
+#ifndef NDEBUG
+    std::thread::id _thread_id;
+    void assert_same_thread() const {
+        assert(std::this_thread::get_id() == _thread_id && "http2_connection used from wrong thread");
+    }
+#else
+    void assert_same_thread() const {}
+#endif
 };

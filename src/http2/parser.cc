@@ -30,6 +30,9 @@ int parse_http2_frame_data(http2_frame_hdr *hdr, const uint8_t *input, http2_fra
     uint8_t pad_length = 0;
     if (frame->hdr.flags & static_cast<uint8_t>(Http2FrameFlag::Padded)) {
         pad_length = input[0];
+        if (static_cast<uint32_t>(pad_length) + 1 > frame->hdr.length) {
+            return static_cast<int>(Http2ErrorCode::FrameSizeError);
+        }
         data = input + 1;
         data_size = frame->hdr.length - pad_length - 1;  // 1 bytes pad length
     } else {
@@ -66,6 +69,9 @@ int parse_http2_frame_headers(http2_frame_hdr *hdr, const uint8_t *input, http2_
 
     if (frame->hdr.flags & static_cast<uint8_t>(Http2FrameFlag::Padded)) {
         pad_length = input[0];
+        if (static_cast<uint32_t>(pad_length) + 1 > frame->hdr.length) {
+            return static_cast<int>(Http2ErrorCode::FrameSizeError);
+        }
         payload = input + 1;
         payload_length = frame->hdr.length - pad_length - 1;
     } else {
@@ -108,11 +114,12 @@ int parse_http2_frame_priority(http2_frame_hdr *hdr, const uint8_t *input, http2
     */
     frame->hdr = *hdr;
 
-    if (frame->hdr.length == 5) {
-        frame->pspec.depend_stream_id = get_uint32_from_be_stream(input) & HTTP2_STREAM_ID_MASK;
-        frame->pspec.exclusive = (input[0] & 0x80) != 0;
-        frame->pspec.weight = input[4] + 1;  // 1-256
+    if (frame->hdr.length != 5) {
+        return static_cast<int>(Http2ErrorCode::FrameSizeError);
     }
+    frame->pspec.depend_stream_id = get_uint32_from_be_stream(input) & HTTP2_STREAM_ID_MASK;
+    frame->pspec.exclusive = (input[0] & 0x80) != 0;
+    frame->pspec.weight = input[4] + 1;  // 1-256
     return static_cast<int>(Http2ErrorCode::NoError);
 }
 
@@ -124,9 +131,10 @@ int parse_http2_frame_rst_stream(http2_frame_hdr *hdr, const uint8_t *input, htt
      */
     frame->hdr = *hdr;
 
-    if (hdr->length == 4) {
-        frame->error_code = get_uint32_from_be_stream(input);
+    if (hdr->length != 4) {
+        return static_cast<int>(Http2ErrorCode::FrameSizeError);
     }
+    frame->error_code = get_uint32_from_be_stream(input);
 
     return static_cast<int>(Http2ErrorCode::NoError);
 }
@@ -143,19 +151,20 @@ int parse_http2_frame_settings(http2_frame_hdr *hdr, const uint8_t *input, http2
 
     frame->settings.clear();
 
-    if (frame->hdr.length % 6 == 0) {
+    if (frame->hdr.length % 6 != 0) {
+        return static_cast<int>(Http2ErrorCode::FrameSizeError);
+    }
 
-        // uint16_t id + uint32_t value = 6 bytes
-        size_t niv = frame->hdr.length / 6;
-        const uint8_t *payload = input;
+    // uint16_t id + uint32_t value = 6 bytes
+    size_t niv = frame->hdr.length / 6;
+    const uint8_t *payload = input;
 
-        for (size_t i = 0; i < niv; i++) {
-            http2_settings_entry entry;
-            entry.id = get_uint16_from_be_stream(payload);
-            entry.value = get_uint32_from_be_stream(payload + 2);
-            frame->settings.emplace_back(entry);
-            payload += 6;
-        }
+    for (size_t i = 0; i < niv; i++) {
+        http2_settings_entry entry;
+        entry.id = get_uint16_from_be_stream(payload);
+        entry.value = get_uint32_from_be_stream(payload + 2);
+        frame->settings.emplace_back(entry);
+        payload += 6;
     }
 
     return static_cast<int>(Http2ErrorCode::NoError);
@@ -180,6 +189,9 @@ int parse_http2_frame_push_promise(http2_frame_hdr *hdr, const uint8_t *input, h
     uint32_t payload_size = 0;
     if (frame->hdr.flags & static_cast<uint8_t>(Http2FrameFlag::Padded)) {
         pad_len = input[0];
+        if (static_cast<uint32_t>(pad_len) + 1 > hdr->length) {
+            return static_cast<int>(Http2ErrorCode::FrameSizeError);
+        }
         payload = input + 1;
         payload_size = hdr->length - pad_len - 1;
 
@@ -205,9 +217,10 @@ int parse_http2_frame_ping(http2_frame_hdr *hdr, const uint8_t *input, http2_fra
     */
     frame->hdr = *hdr;
 
-    if (frame->hdr.length == 8) {
-        memcpy(frame->opaque_data, input, 8);
+    if (frame->hdr.length != 8) {
+        return static_cast<int>(Http2ErrorCode::FrameSizeError);
     }
+    memcpy(frame->opaque_data, input, 8);
     return static_cast<int>(Http2ErrorCode::NoError);
 }
 
@@ -223,6 +236,9 @@ int parse_http2_frame_goaway(http2_frame_hdr *hdr, const uint8_t *input, http2_f
     */
     frame->hdr = *hdr;
 
+    if (hdr->length < 8) {
+        return static_cast<int>(Http2ErrorCode::FrameSizeError);
+    }
     frame->reserved = (input[0] & 0x80) != 0;
     frame->last_stream_id = get_uint32_from_be_stream(input) & HTTP2_STREAM_ID_MASK;
     frame->error_code = get_uint32_from_be_stream(input + sizeof(uint32_t));
@@ -239,10 +255,11 @@ int parse_http2_frame_window_update(http2_frame_hdr *hdr, const uint8_t *input, 
     */
     frame->hdr = *hdr;
 
-    if (frame->hdr.length == 4) {
-        frame->reserved = (input[0] & 0x80) != 0;
-        frame->window_size_inc = get_uint32_from_be_stream(input) & HTTP2_STREAM_ID_MASK;
+    if (frame->hdr.length != 4) {
+        return static_cast<int>(Http2ErrorCode::FrameSizeError);
     }
+    frame->reserved = (input[0] & 0x80) != 0;
+    frame->window_size_inc = get_uint32_from_be_stream(input) & HTTP2_STREAM_ID_MASK;
     return static_cast<int>(Http2ErrorCode::NoError);
 }
 

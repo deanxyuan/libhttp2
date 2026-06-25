@@ -234,7 +234,7 @@ void compressor_encode_headers(compressor *c, const std::vector<mdelem_data> *me
 static uint32_t elems_for_bytes(uint32_t bytes) {
     return (bytes + 31) / 32;
 }
-void compressor_init(compressor *c) {
+int compressor_init(compressor *c) {
     c->max_table_size = HPACK_INITIAL_TABLE_SIZE;
     c->cap_table_elems = elems_for_bytes(c->max_table_size);
     c->max_table_elems = c->cap_table_elems;
@@ -246,6 +246,9 @@ void compressor_init(compressor *c) {
 
     const size_t alloc_size = sizeof(*c->table_elem_size) * c->cap_table_elems;
     c->table_elem_size = static_cast<uint16_t *>(malloc(alloc_size));
+    if (!c->table_elem_size) {
+        return -1;
+    }
     memset(c->table_elem_size, 0, alloc_size);
 
     for (size_t i = 0; i < HPACK_NUM_VALUES; i++) {
@@ -253,6 +256,7 @@ void compressor_init(compressor *c) {
         c->entries[i].mdel.key = slice();
         c->entries[i].mdel.value = slice();
     }
+    return 0;
 }
 void compressor_destroy(compressor *c) {
     free(c->table_elem_size);
@@ -260,6 +264,9 @@ void compressor_destroy(compressor *c) {
 
 static void rebuild_elems(compressor *c, uint32_t new_cap) {
     uint16_t *table_elem_size = static_cast<uint16_t *>(malloc(sizeof(*table_elem_size) * new_cap));
+    if (!table_elem_size) {
+        return;
+    }
     uint32_t i;
 
     memset(table_elem_size, 0, sizeof(*table_elem_size) * new_cap);

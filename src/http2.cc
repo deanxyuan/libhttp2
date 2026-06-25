@@ -281,7 +281,7 @@ bool TransportAdaptor::SendWindowUpdate(uint32_t stream_id, uint32_t increment) 
 
 std::unique_ptr<Transport> CreateTransport(uint64_t connection_id, bool client_side,
                                            SendService *service) {
-    return std::make_unique<TransportAdaptor>(service, connection_id, client_side);
+    return std::unique_ptr<Transport>(new TransportAdaptor(service, connection_id, client_side));
 }
 
 }  // namespace http2

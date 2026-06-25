@@ -42,7 +42,7 @@ const uint8_t *decode_string(const uint8_t *src, size_t src_len, std::string &va
     http2_head_huffman_decode_context_init(&ctx);
 
     value.resize(len * 3);
-    int32_t ret = http2_head_huffman_decode(&ctx, (uint8_t *)(value.data()), src, src_len, 1);
+    int32_t ret = http2_head_huffman_decode(&ctx, (uint8_t *)(value.data()), value.size(), src, src_len, 1);
     if (ret == -1) {
         return nullptr;
     }

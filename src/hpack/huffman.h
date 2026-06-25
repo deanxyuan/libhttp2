@@ -106,17 +106,17 @@ void http2_head_huffman_decode_context_init(http2_hd_huff_decode_context *ctx);
  *
  * The context must be initialized by http2_head_huffman_decode_context_init().
  * The caller must set @p fin to nonzero when the given input is the final block.
- * Assumes @p buf has enough room for the decoded output.
  *
  * @param ctx    Pointer to the Huffman decoding context.
  * @param buf    Pointer to the output buffer for decoded bytes.
+ * @param buflen Size of the output buffer in bytes.
  * @param src    Pointer to the encoded input data.
  * @param srclen Length of the encoded input in bytes.
  * @param fin    Nonzero if this is the final block of input.
- * @return Number of decoded bytes written, or -1 on failure.
+ * @return Number of decoded bytes written, or -1 on failure or buffer overflow.
  */
-int32_t http2_head_huffman_decode(http2_hd_huff_decode_context *ctx, uint8_t *buf, const uint8_t *src, size_t srclen,
-                                  int fin);
+int32_t http2_head_huffman_decode(http2_hd_huff_decode_context *ctx, uint8_t *buf, size_t buflen,
+                                  const uint8_t *src, size_t srclen, int fin);
 
 /**
  * @brief Check whether the Huffman decoding context is in a failure state.

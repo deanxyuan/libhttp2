@@ -15,11 +15,14 @@
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 // ============================================================================
 // HTTP/2 Enum Classes (RFC 7540)
 // ============================================================================
+
+namespace http2 {
 
 /** @brief Error codes used in RST_STREAM and GOAWAY frames (RFC 7540, Section 7). */
 enum class Http2ErrorCode : uint32_t {
@@ -108,10 +111,23 @@ enum class Http2FrameFlag : uint8_t {
 /** @brief Maximum valid stream identifier (2^31 - 1). */
 constexpr uint32_t HTTP2_MAX_STREAM_ID = 0x7FFFFFFF;
 
-namespace http2 {
-
 /** @brief Global table of valid ranges for all HTTP/2 SETTINGS parameters. */
 const extern SettingParameters global_settings_parameters[HTTP2_NUMBER_OF_SETTINGS];
+
+}  // namespace http2
+
+// Backward-compatible aliases in global scope
+using http2::Http2ErrorCode;
+using http2::Http2FrameType;
+using http2::Http2SettingsId;
+using http2::InvalidValueBehavior;
+using http2::SettingParameters;
+using http2::Http2StreamState;
+using http2::Http2FrameFlag;
+using http2::HTTP2_NUMBER_OF_SETTINGS;
+using http2::HTTP2_MAX_STREAM_ID;
+
+namespace http2 {
 
 /** @brief ALPN protocol identifier for HTTP/2 over TLS (RFC 7540, Section 3.3). */
 constexpr const char* ALPN_PROTOCOL = "h2";
@@ -237,6 +253,30 @@ public:
      *  @return true if the frame was sent successfully.
      */
     virtual bool SendRSTStream(uint32_t error_code) = 0;
+
+    /** @brief Send a RST_STREAM frame with a typed error code.
+     *  @param error_code The error code enum value.
+     *  @return true if the frame was sent successfully.
+     */
+    bool SendRSTStream(Http2ErrorCode error_code) {
+        return SendRSTStream(static_cast<uint32_t>(error_code));
+    }
+
+    // === Typed accessors ===
+
+    /** @brief Get the current stream state as a typed enum.
+     *  @return The current Http2StreamState value.
+     */
+    Http2StreamState CurrentStateTyped() const {
+        return static_cast<Http2StreamState>(CurrentState());
+    }
+
+    /** @brief Get the frame flags as a typed bitmask.
+     *  @return Bitmask of Http2FrameFlag values.
+     */
+    Http2FrameFlag FlagsTyped() const {
+        return static_cast<Http2FrameFlag>(Flags());
+    }
 
     // === Data reading ===
 
@@ -521,8 +561,14 @@ public:
     virtual bool SendPing(uint64_t info) = 0;
 
     /** @brief Send a GOAWAY frame to initiate graceful connection shutdown.
+     *
+     *  After sending GOAWAY, the transport will reject new stream creation.
+     *  Existing streams with ID <= last_stream_id continue to process normally.
+     *
      *  @param error_code     The error code (e.g., Http2ErrorCode::NoError for graceful).
-     *  @param last_stream_id The highest stream ID the sender will process (0 = auto).
+     *  @param last_stream_id The highest stream ID the sender will process.
+     *                        0 means "auto": uses the highest remote stream ID seen so far,
+     *                        which is the RFC 7540 recommended behavior for graceful shutdown.
      *  @param debug          Optional human-readable debug data.
      *  @return true if the GOAWAY frame was sent successfully.
      */
@@ -600,6 +646,22 @@ public:
      */
     virtual uint32_t GetLocalSetting(uint16_t id) const = 0;
 
+    /** @brief Get a remote SETTINGS value by typed parameter ID.
+     *  @param id The settings parameter identifier.
+     *  @return The current value negotiated with the remote peer.
+     */
+    uint32_t GetRemoteSetting(Http2SettingsId id) const {
+        return GetRemoteSetting(static_cast<uint16_t>(id));
+    }
+
+    /** @brief Get a local SETTINGS value by typed parameter ID.
+     *  @param id The settings parameter identifier.
+     *  @return The current local setting value.
+     */
+    uint32_t GetLocalSetting(Http2SettingsId id) const {
+        return GetLocalSetting(static_cast<uint16_t>(id));
+    }
+
     /** @brief Get a snapshot of connection-level state. */
     virtual ConnectionInfo GetConnectionInfo() const = 0;
 
@@ -644,6 +706,44 @@ public:
      *  @return true if the WINDOW_UPDATE was sent successfully.
      */
     virtual bool SendWindowUpdate(uint32_t stream_id, uint32_t increment) = 0;
+};
+
+// ============================================================================
+// ScopedBufferedMode -- RAII guard for buffered mode
+// ============================================================================
+
+/** @brief RAII guard that enables buffered mode on construction and disables + flushes on destruction.
+ *
+ *  Usage:
+ *    {
+ *        http2::ScopedBufferedMode guard(transport);
+ *        stream->SendHeaders(headers, false);
+ *        stream->SendData(body, len, true);
+ *    }  // automatically flushes and restores previous mode
+ *
+ *  This ensures exception-safe send batching: if an exception is thrown
+ *  between SetBufferedMode(true) and Flush(), the destructor still runs.
+ */
+class ScopedBufferedMode {
+public:
+    /** @brief Enable buffered mode on the given transport.
+     *  @param transport The transport to guard. Must not be nullptr.
+     */
+    explicit ScopedBufferedMode(Transport *transport) : _transport(transport) {
+        _transport->SetBufferedMode(true);
+    }
+
+    /** @brief Flush pending data and restore previous buffered mode state. */
+    ~ScopedBufferedMode() {
+        _transport->Flush();
+        _transport->SetBufferedMode(false);
+    }
+
+    ScopedBufferedMode(const ScopedBufferedMode &) = delete;
+    ScopedBufferedMode &operator=(const ScopedBufferedMode &) = delete;
+
+private:
+    Transport *_transport;
 };
 
 // ============================================================================

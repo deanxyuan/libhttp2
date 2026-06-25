@@ -49,8 +49,9 @@ typedef struct {
 /**
  * @brief Initialize a compressor with default settings.
  * @param c Pointer to the compressor to initialize.
+ * @return 0 on success, -1 on memory allocation failure.
  */
-void compressor_init(compressor *c);
+int compressor_init(compressor *c);
 
 /**
  * @brief Destroy a compressor and free its resources.

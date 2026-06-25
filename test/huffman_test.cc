@@ -19,7 +19,7 @@ TEST(HuffmanTest, EncodeAndDecode) {
     http2_head_huffman_decode_context_init(&ctx);
 
     uint8_t decode_buf[128] = {0};
-    size_t decode_len = http2_head_huffman_decode(&ctx, decode_buf, buff, real_len, 1);
+    size_t decode_len = http2_head_huffman_decode(&ctx, decode_buf, sizeof(decode_buf), buff, real_len, 1);
     ASSERT_TRUE(strncmp(str, (char *)decode_buf, str_len) == 0);
     ASSERT_EQ(decode_len, str_len);
 }

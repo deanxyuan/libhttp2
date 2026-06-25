@@ -99,8 +99,8 @@ void http2_head_huffman_decode_context_init(http2_hd_huff_decode_context *ctx) {
     ctx->fstate = HTTP2_HUFF_ACCEPTED;
 }
 
-int32_t http2_head_huffman_decode(http2_hd_huff_decode_context *ctx, uint8_t *buf, const uint8_t *src, size_t srclen,
-                                  int fin) {
+int32_t http2_head_huffman_decode(http2_hd_huff_decode_context *ctx, uint8_t *buf, size_t buflen,
+                                  const uint8_t *src, size_t srclen, int fin) {
     const uint8_t *end = src + srclen;
     http2_huff_decode node = {ctx->fstate, 0};
     const http2_huff_decode *t = &node;
@@ -113,12 +113,14 @@ int32_t http2_head_huffman_decode(http2_hd_huff_decode_context *ctx, uint8_t *bu
         c = *src++;
         t = &huff_decode_table[t->fstate & 0x1ff][c >> 4];
         if (t->fstate & HTTP2_HUFF_SYM) {
+            if (static_cast<size_t>(bytes) >= buflen) return -1;
             *buf++ = t->sym;
             bytes++;
         }
 
         t = &huff_decode_table[t->fstate & 0x1ff][c & 0xf];
         if (t->fstate & HTTP2_HUFF_SYM) {
+            if (static_cast<size_t>(bytes) >= buflen) return -1;
             *buf++ = t->sym;
             bytes++;
         }
