@@ -509,7 +509,7 @@ void http2_connection::send_binary_in_data_frame(std::shared_ptr<http2_stream> &
     send_http2_frame(&frame);
 }
 
-int http2_connection::package_process(const uint8_t *package, uint32_t package_length) {
+int http2_connection::package_process(const uint8_t *package, uint32_t /*package_length*/) {
     assert(package_length >= HTTP2_FRAME_HEADER_SIZE);
 
     http2_frame_hdr hdr;
@@ -610,7 +610,7 @@ void http2_connection::received_headers(std::shared_ptr<http2_stream> &stream,
     slice headers = frame->header_block_fragment;
     std::vector<hpack::mdelem_data> decoded_headers;
     int err =
-        hpack::decode_headers(headers.data(), headers.size(), &_dynamic_table, &decoded_headers);
+        hpack::decode_headers(headers.data(), static_cast<uint32_t>(headers.size()), &_dynamic_table, &decoded_headers);
     if (err != static_cast<uint32_t>(Http2ErrorCode::NoError)) {
         send_goaway(err);
         return;
@@ -739,7 +739,7 @@ void http2_connection::received_settings(http2_frame_settings *frame) {
     send_http2_frame(&settings_ack);
 }
 
-void http2_connection::received_push_promise(std::shared_ptr<http2_stream> &stream,
+void http2_connection::received_push_promise(std::shared_ptr<http2_stream> & /*stream*/,
                                              http2_frame_push_promise *frame) {
     if (frame->pad_len >= frame->hdr.length) {
         send_goaway(static_cast<uint32_t>(Http2ErrorCode::ProtocolError));
@@ -766,7 +766,7 @@ void http2_connection::received_push_promise(std::shared_ptr<http2_stream> &stre
     std::vector<hpack::mdelem_data> decoded_headers;
     slice headers = frame->header_block_fragment;
     int ret =
-        hpack::decode_headers(headers.data(), headers.size(), &_dynamic_table, &decoded_headers);
+        hpack::decode_headers(headers.data(), static_cast<uint32_t>(headers.size()), &_dynamic_table, &decoded_headers);
     if (ret != static_cast<uint32_t>(Http2ErrorCode::NoError)) {
         send_goaway(ret);
         return;
@@ -875,7 +875,7 @@ void http2_connection::received_continuation(std::shared_ptr<http2_stream> &stre
     slice headers = frame->header_block_fragment;
     std::vector<hpack::mdelem_data> decoded_headers;
     int ret =
-        hpack::decode_headers(headers.data(), headers.size(), &_dynamic_table, &decoded_headers);
+        hpack::decode_headers(headers.data(), static_cast<uint32_t>(headers.size()), &_dynamic_table, &decoded_headers);
     if (ret != static_cast<uint32_t>(Http2ErrorCode::NoError)) {
         send_goaway(ret);
         return;
@@ -908,7 +908,7 @@ int http2_connection::send_raw_data(const slice_buffer &sb) {
     int total = 0;
     for (size_t i = 0; i < sb.slice_count(); i++) {
         const slice &s = sb[i];
-        int ret = _sender_service->SendRawData(_connection_id, s.data(), s.size());
+        int ret = _sender_service->SendRawData(_connection_id, s.data(), static_cast<uint32_t>(s.size()));
         if (ret < 0) return -1;
         total += ret;
     }
@@ -920,7 +920,7 @@ int http2_connection::send_raw_data(slice s) {
         buffer_raw_data(s);
         return static_cast<int>(s.size());
     }
-    return _sender_service->SendRawData(_connection_id, s.data(), s.size());
+    return _sender_service->SendRawData(_connection_id, s.data(), static_cast<uint32_t>(s.size()));
 }
 
 void http2_connection::set_buffered_mode(bool enable) {

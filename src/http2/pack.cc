@@ -18,7 +18,7 @@ slice_buffer pack_http2_frame_data(http2_frame_data *frame, uint32_t max_frame_s
     slice_buffer buffer;
     while (readed_length < frame->data.size()) {
 
-        uint32_t remain_bytes = frame->data.size() - readed_length;
+        uint32_t remain_bytes = static_cast<uint32_t>(frame->data.size()) - readed_length;
         hdr.length = (remain_bytes < max_frame_size) ? remain_bytes : max_frame_size;
         bool is_last = (readed_length + hdr.length >= frame->data.size());
 
@@ -30,7 +30,7 @@ slice_buffer pack_http2_frame_data(http2_frame_data *frame, uint32_t max_frame_s
         }
 
         slice data = MakeSliceByLength(hdr.length + HTTP2_FRAME_HEADER_SIZE);
-        uint8_t *ptr = const_cast<uint8_t *>(data.data());
+        uint8_t *ptr = data.mutable_data();
 
         http2_frame_header_pack(ptr, &hdr);
         ptr += HTTP2_FRAME_HEADER_SIZE;
@@ -47,7 +47,7 @@ slice pack_http2_frame_headers(http2_frame_headers *frame) {
     size_t frame_length = HTTP2_FRAME_HEADER_SIZE + frame->hdr.length;
     slice frame_data = MakeSliceByLength(frame_length);
 
-    uint8_t *p = const_cast<uint8_t *>(frame_data.data());
+    uint8_t *p = frame_data.mutable_data();
     http2_frame_header_pack(p, &frame->hdr);
     p += HTTP2_FRAME_HEADER_SIZE;
 
@@ -77,7 +77,7 @@ slice pack_http2_frame_priority(http2_frame_priority *frame) {
 
     slice frame_data = MakeSliceByLength(frame_length);
 
-    uint8_t *p = const_cast<uint8_t *>(frame_data.data());
+    uint8_t *p = frame_data.mutable_data();
     http2_frame_header_pack(p, &frame->hdr);
     p += HTTP2_FRAME_HEADER_SIZE;
 
@@ -103,7 +103,7 @@ slice pack_http2_frame_rst_stream(http2_frame_rst_stream *frame) {
 
     slice frame_data = MakeSliceByLength(frame_length);
 
-    uint8_t *p = const_cast<uint8_t *>(frame_data.data());
+    uint8_t *p = frame_data.mutable_data();
     http2_frame_header_pack(p, &frame->hdr);
     p += HTTP2_FRAME_HEADER_SIZE;
     put_uint32_in_be_stream(p, frame->error_code);
@@ -115,7 +115,7 @@ slice pack_http2_frame_settings(http2_frame_settings *frame) {
     size_t frame_length = HTTP2_FRAME_HEADER_SIZE + frame->hdr.length;
     slice frame_data = MakeSliceByLength(frame_length);
 
-    uint8_t *p = const_cast<uint8_t *>(frame_data.data());
+    uint8_t *p = frame_data.mutable_data();
     http2_frame_header_pack(p, &frame->hdr);
     p += HTTP2_FRAME_HEADER_SIZE;
 
@@ -132,7 +132,7 @@ slice pack_http2_frame_push_promise(http2_frame_push_promise *frame) {
     size_t frame_length = HTTP2_FRAME_HEADER_SIZE + frame->hdr.length;
     slice frame_data = MakeSliceByLength(frame_length);
 
-    uint8_t *p = const_cast<uint8_t *>(frame_data.data());
+    uint8_t *p = frame_data.mutable_data();
     http2_frame_header_pack(p, &frame->hdr);
     p += HTTP2_FRAME_HEADER_SIZE;
 
@@ -154,7 +154,7 @@ slice pack_http2_frame_ping(http2_frame_ping *frame) {
     constexpr size_t frame_length = HTTP2_FRAME_HEADER_SIZE + 8;
     slice frame_data = MakeSliceByLength(frame_length);
 
-    uint8_t *p = const_cast<uint8_t *>(frame_data.data());
+    uint8_t *p = frame_data.mutable_data();
     http2_frame_header_pack(p, &frame->hdr);
     p += HTTP2_FRAME_HEADER_SIZE;
     memcpy(p, frame->opaque_data, 8);
@@ -165,7 +165,7 @@ slice pack_http2_frame_goaway(http2_frame_goaway *frame) {
     size_t frame_length = HTTP2_FRAME_HEADER_SIZE + frame->hdr.length;
     slice frame_data = MakeSliceByLength(frame_length);
 
-    uint8_t *p = const_cast<uint8_t *>(frame_data.data());
+    uint8_t *p = frame_data.mutable_data();
     http2_frame_header_pack(p, &frame->hdr);
     p += HTTP2_FRAME_HEADER_SIZE;
 
@@ -184,7 +184,7 @@ slice pack_http2_frame_window_update(http2_frame_window_update *frame) {
     constexpr size_t frame_length = HTTP2_FRAME_HEADER_SIZE + 4;
     slice frame_data = MakeSliceByLength(frame_length);
 
-    uint8_t *p = const_cast<uint8_t *>(frame_data.data());
+    uint8_t *p = frame_data.mutable_data();
     http2_frame_header_pack(p, &frame->hdr);
     p += HTTP2_FRAME_HEADER_SIZE;
 
@@ -197,7 +197,7 @@ slice pack_http2_frame_continuation(http2_frame_continuation *frame) {
     size_t frame_length = HTTP2_FRAME_HEADER_SIZE + frame->hdr.length;
     slice frame_data = MakeSliceByLength(frame_length);
 
-    uint8_t *p = const_cast<uint8_t *>(frame_data.data());
+    uint8_t *p = frame_data.mutable_data();
     http2_frame_header_pack(p, &frame->hdr);
     p += HTTP2_FRAME_HEADER_SIZE;
 

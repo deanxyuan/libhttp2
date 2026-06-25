@@ -16,6 +16,9 @@
  *
  * Provides operations to merge, extract, and navigate slices as a logical
  * contiguous byte stream without copying until explicitly requested.
+ *
+ * Uses a _start offset to make pop_front() O(1) instead of O(n).
+ * Periodically compacts when the dead prefix grows too large.
  */
 class slice_buffer final {
 public:
@@ -121,6 +124,9 @@ public:
     size_t copy_to_buffer(void *buff, size_t len);
 
 private:
+    void _compact();
+
     std::vector<slice> _vs;
+    size_t _start;
     size_t _length;
 };

@@ -78,7 +78,7 @@ int parse_http2_frame_headers(http2_frame_hdr *hdr, const uint8_t *input, http2_
 
     int32_t dep_stream_id = 0;
     uint8_t exclusive = 0;
-    int32_t weight = 0;
+    uint16_t weight = 0;
 
     if (frame->hdr.flags & static_cast<uint8_t>(Http2FrameFlag::Priority)) {
         dep_stream_id = get_uint32_from_be_stream(payload) & HTTP2_STREAM_ID_MASK;

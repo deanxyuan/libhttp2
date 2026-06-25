@@ -43,35 +43,37 @@ size_t uint16_encode_length(uint32_t I, uint8_t mask) {
 slice encode_uint16(uint32_t I, uint8_t mask) {
     size_t bytes = uint16_encode_length(I, mask);
     slice s = MakeSliceByLength(bytes);
-    uint8_t *buf = const_cast<uint8_t *>(s.data());
+    uint8_t *buf = s.mutable_data();
     uint16_encode_impl(buf, I, mask);
     return s;
 }
 
 slice encode_mdelem_data_impl(const mdelem_data &mdel, uint8_t type) {
-    size_t key_len_size = uint16_encode_length(mdel.key.size(), INT_MASK(7));
-    size_t value_len_size = uint16_encode_length(mdel.value.size(), INT_MASK(7));
+    uint32_t key_size = static_cast<uint32_t>(mdel.key.size());
+    uint32_t value_size = static_cast<uint32_t>(mdel.value.size());
+    size_t key_len_size = uint16_encode_length(key_size, INT_MASK(7));
+    size_t value_len_size = uint16_encode_length(value_size, INT_MASK(7));
     size_t bytes = 1 + key_len_size + value_len_size + MDELEM_SIZE(mdel);
     slice s = MakeSliceByLength(bytes);
-    uint8_t *buf = const_cast<uint8_t *>(s.data());
+    uint8_t *buf = s.mutable_data();
 
     // first byte (type)
     *buf++ = type;
 
     // key length
-    uint16_encode_impl(buf, mdel.key.size(), INT_MASK(7));
+    uint16_encode_impl(buf, key_size, INT_MASK(7));
     buf += key_len_size;
 
     // key
-    memcpy(buf, mdel.key.data(), mdel.key.size());
-    buf += mdel.key.size();
+    memcpy(buf, mdel.key.data(), key_size);
+    buf += key_size;
 
     // value length
-    uint16_encode_impl(buf, mdel.value.size(), INT_MASK(7));
+    uint16_encode_impl(buf, value_size, INT_MASK(7));
     buf += value_len_size;
 
     // value
-    memcpy(buf, mdel.value.data(), mdel.value.size());
+    memcpy(buf, mdel.value.data(), value_size);
     return s;
 }
 
@@ -84,7 +86,7 @@ slice encode_index(uint32_t index) {
      */
 
     slice s = encode_uint16(index, INT_MASK(7));
-    uint8_t *buf = const_cast<uint8_t *>(s.data());
+    uint8_t *buf = s.mutable_data();
     buf[0] |= 0x80;
     return s;
 }
@@ -98,7 +100,7 @@ slice encode_update_max_size(uint32_t max_size) {
      */
 
     slice s = encode_uint16(max_size, INT_MASK(5));
-    uint8_t *buf = const_cast<uint8_t *>(s.data());
+    uint8_t *buf = s.mutable_data();
     buf[0] |= 0x20;
     return s;
 }
@@ -133,22 +135,23 @@ slice encode_without_indexing(const mdelem_data &mdel, uint32_t key_index) {
         | Value String (Length octets)  |
         +-------------------------------+
      */
+    uint32_t value_size = static_cast<uint32_t>(mdel.value.size());
     size_t key_index_size = uint16_encode_length(key_index, INT_MASK(4));
-    size_t value_len_size = uint16_encode_length(mdel.value.size(), INT_MASK(7));
-    size_t bytes = key_index_size + value_len_size + mdel.value.size();
+    size_t value_len_size = uint16_encode_length(value_size, INT_MASK(7));
+    size_t bytes = key_index_size + value_len_size + value_size;
     slice s = MakeSliceByLength(bytes);
-    uint8_t *buf = const_cast<uint8_t *>(s.data());
+    uint8_t *buf = s.mutable_data();
 
     // key index
     uint16_encode_impl(buf, key_index, INT_MASK(4));
     buf += key_index_size;
 
     // value length
-    uint16_encode_impl(buf, mdel.value.size(), INT_MASK(7));
+    uint16_encode_impl(buf, value_size, INT_MASK(7));
     buf += value_len_size;
 
     // value
-    memcpy(buf, mdel.value.data(), mdel.value.size());
+    memcpy(buf, mdel.value.data(), value_size);
     return s;
 }
 

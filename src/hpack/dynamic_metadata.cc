@@ -27,7 +27,7 @@ bool dynamic_metadata_table::get_mdelem_data(size_t index, mdelem_data *mdel) {
 
 void dynamic_metadata_table::push_mdelem_data(const mdelem_data &md) {
     _dynamic_table.push_front(md);
-    _current_table_size += MDELEM_SIZE(md);
+    _current_table_size += static_cast<uint32_t>(MDELEM_SIZE(md));
     _current_table_size += 32;
     adjust_dynamic_table_size();
 }
@@ -65,7 +65,7 @@ int32_t dynamic_metadata_table::get_mdelem_data_index(const mdelem_data &mdel) {
 void dynamic_metadata_table::adjust_dynamic_table_size() {
     while (_current_table_size > _max_table_size && !_dynamic_table.empty()) {
         auto entry = _dynamic_table.back();
-        auto element_size = MDELEM_SIZE(entry);
+        auto element_size = static_cast<uint32_t>(MDELEM_SIZE(entry));
         _current_table_size -= element_size + 32;
         _dynamic_table.pop_back();
     }

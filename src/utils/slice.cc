@@ -7,7 +7,6 @@
 #include <assert.h>
 #include <stdlib.h>
 #include <string.h>
-#include <mutex>
 
 class slice_refcount final {
 public:
@@ -41,42 +40,37 @@ void slice_refcount::unref() {
     }
 }
 
+// Sentinel for static (non-owning) slices. Its refcount starts high and will
+// never reach zero, so the destructor (which does not call free()) is safe.
+// All MakeStaticSlice() calls share this single sentinel.
+static slice_refcount s_static_sentinel;
+
 slice::slice(const char *ptr, size_t len) {
-    if (len == 0) {  // empty object
+    if (len == 0 || ptr == nullptr) {
         _refs = nullptr;
-        memset(&_data, 0, sizeof(_data));
+        _length = 0;
+        _bytes = nullptr;
         return;
     }
 
-    if (len <= SLICE_INLINED_SIZE) {
-        _refs = nullptr;
-        _data.inlined.length = static_cast<uint8_t>(len);
-        if (ptr) {
-            memcpy(_data.inlined.bytes, ptr, len);
-        }
-    } else {
-        /*  Memory layout used by the slice created here:
+    /*  Memory layout:
 
-            +-----------+----------------------------------------------------------+
-            | refcount  | bytes                                                    |
-            +-----------+----------------------------------------------------------+
+        +-----------+----------------------------------------------------------+
+        | refcount  | bytes                                                    |
+        +-----------+----------------------------------------------------------+
 
-            refcount is a slice_refcount
-            bytes is an array of bytes of the requested length
-        */
-
-        _refs = (slice_refcount *)malloc(sizeof(slice_refcount) + len);
-        new (_refs) slice_refcount();
-        _data.refcounted.length = len;
-        _data.refcounted.bytes = reinterpret_cast<uint8_t *>(_refs + 1);
-        if (ptr) {
-            memcpy(_data.refcounted.bytes, ptr, len);
-        }
-    }
+        refcount is a slice_refcount
+        bytes is an array of bytes of the requested length
+    */
+    _refs = (slice_refcount *)malloc(sizeof(slice_refcount) + len);
+    new (_refs) slice_refcount();
+    _length = len;
+    _bytes = reinterpret_cast<uint8_t *>(_refs + 1);
+    memcpy(_bytes, ptr, len);
 }
 
 slice::slice(const char *ptr)
-    : slice(ptr, strlen(ptr)) {}
+    : slice(ptr, (ptr ? strlen(ptr) : 0)) {}
 
 slice::slice(const void *ptr, size_t len)
     : slice(reinterpret_cast<const char *>(ptr), len) {}
@@ -89,96 +83,95 @@ slice::slice(const std::string &str)
 
 slice::slice() {
     _refs = nullptr;
-    memset(&_data, 0, sizeof(_data));
+    _length = 0;
+    _bytes = nullptr;
 }
 
 slice::~slice() {
-    if (_refs) {
+    if (_refs && _refs != &s_static_sentinel) {
         _refs->unref();
     }
 }
 
 slice::slice(const slice &oth) {
-    if (oth._refs != nullptr) {
+    if (oth._refs && oth._refs != &s_static_sentinel) {
         oth._refs->ref();
     }
     _refs = oth._refs;
-    _data = oth._data;
+    _length = oth._length;
+    _bytes = oth._bytes;
 }
 
 slice &slice::operator=(const slice &oth) {
     if (this != &oth) {
-        if (_refs) {
+        if (_refs && _refs != &s_static_sentinel) {
             _refs->unref();
         }
-        if (oth._refs) {
+        if (oth._refs && oth._refs != &s_static_sentinel) {
             oth._refs->ref();
         }
         _refs = oth._refs;
-        _data = oth._data;
+        _length = oth._length;
+        _bytes = oth._bytes;
     }
     return *this;
 }
 
 slice::slice(slice &&oth) noexcept
     : _refs(oth._refs)
-    , _data(oth._data) {
+    , _length(oth._length)
+    , _bytes(oth._bytes) {
     oth._refs = nullptr;
-    memset(&oth._data, 0, sizeof(oth._data));
+    oth._length = 0;
+    oth._bytes = nullptr;
 }
 
 slice &slice::operator=(slice &&oth) noexcept {
     if (this != &oth) {
-        if (_refs) {
+        if (_refs && _refs != &s_static_sentinel) {
             _refs->unref();
         }
         _refs = oth._refs;
-        _data = oth._data;
+        _length = oth._length;
+        _bytes = oth._bytes;
         oth._refs = nullptr;
-        memset(&oth._data, 0, sizeof(oth._data));
+        oth._length = 0;
+        oth._bytes = nullptr;
     }
     return *this;
 }
 
 size_t slice::size() const {
-    return (_refs) ? _data.refcounted.length : _data.inlined.length;
+    return _length;
 }
 
 const uint8_t *slice::data() const {
-    return (_refs) ? _data.refcounted.bytes : _data.inlined.bytes;
+    return _bytes;
+}
+
+uint8_t *slice::mutable_data() {
+    return _bytes;
 }
 
 void slice::pop_back(size_t remove_size) {
     if (remove_size == 0) {
         return;
     }
-    if (remove_size > size()) {
-        remove_size = size();
+    if (remove_size > _length) {
+        remove_size = _length;
     }
-
-    if (_refs) {
-        _data.refcounted.length -= remove_size;
-    } else {
-        _data.inlined.length -= static_cast<uint8_t>(remove_size);
-    }
+    _length -= remove_size;
 }
 
 void slice::pop_front(size_t remove_size) {
     if (remove_size == 0) {
         return;
     }
-
-    if (remove_size > size()) {
-        remove_size = size();
+    if (remove_size > _length) {
+        remove_size = _length;
     }
-
-    if (_refs) {
-        _data.refcounted.length -= remove_size;
-        _data.refcounted.bytes += remove_size;
-    } else {
-        _data.inlined.length -= static_cast<uint8_t>(remove_size);
-        memmove(_data.inlined.bytes, _data.inlined.bytes + remove_size, _data.inlined.length);
-    }
+    _length -= remove_size;
+    _bytes += remove_size;
 }
 
 std::string slice::to_string() const {
@@ -186,7 +179,7 @@ std::string slice::to_string() const {
 }
 
 bool slice::empty() const {
-    return (size() == 0);
+    return (_length == 0);
 }
 
 void slice::assign(const std::string &s) {
@@ -221,17 +214,12 @@ slice &slice::operator+=(const slice &s) {
     return *this;
 }
 
-std::once_flag of;
-
 slice MakeStaticSlice(const void *ptr, size_t len) {
-    if (len == 0) return slice();
-    static slice_refcount *refs = nullptr;
-    std::call_once(of, [](void) { refs = new slice_refcount(); });
+    if (len == 0 || ptr == nullptr) return slice();
     slice s;
-    s._refs = refs;
-    s._data.refcounted.bytes = (uint8_t *)ptr;
-    s._data.refcounted.length = len;
-    s._refs->ref();
+    s._refs = &s_static_sentinel;
+    s._length = len;
+    s._bytes = (uint8_t *)ptr;
     return s;
 }
 
@@ -241,16 +229,12 @@ slice MakeStaticSlice(const char *ptr) {
 }
 
 slice MakeSliceByLength(size_t len) {
+    if (len == 0) return slice();
     slice s;
-    if (len <= slice::SLICE_INLINED_SIZE) {
-        s._refs = nullptr;
-        s._data.inlined.length = static_cast<uint8_t>(len);
-    } else {
-        s._refs = (slice_refcount *)malloc(sizeof(slice_refcount) + len);
-        new (s._refs) slice_refcount();
-        s._data.refcounted.length = len;
-        s._data.refcounted.bytes = reinterpret_cast<uint8_t *>(s._refs + 1);
-    }
+    s._refs = (slice_refcount *)malloc(sizeof(slice_refcount) + len);
+    new (s._refs) slice_refcount();
+    s._length = len;
+    s._bytes = reinterpret_cast<uint8_t *>(s._refs + 1);
     return s;
 }
 
@@ -260,7 +244,7 @@ slice operator+(slice s1, slice s2) {
     }
     size_t len = s1.size() + s2.size();
     slice s = MakeSliceByLength(len);
-    uint8_t *buff = const_cast<uint8_t *>(s.data());
+    uint8_t *buff = s.mutable_data();
     if (!s1.empty()) {
         memcpy(buff, s1.data(), s1.size());
         buff += s1.size();

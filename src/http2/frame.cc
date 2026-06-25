@@ -30,7 +30,7 @@ void http2_frame_header_unpack(http2_frame_hdr *hd, const uint8_t *buf) {
 }
 
 void http2_frame_header_init(http2_frame_hdr *hd, size_t length, uint8_t type, uint8_t flags, uint32_t stream_id) {
-    hd->length = length;
+    hd->length = static_cast<uint32_t>(length);
     hd->type = type;
     hd->flags = flags;
     hd->stream_id = stream_id;
@@ -39,12 +39,13 @@ void http2_frame_header_init(http2_frame_hdr *hd, size_t length, uint8_t type, u
 
 http2_frame_settings build_http2_frame_settings(int flags, std::vector<http2_settings_entry> *settings) {
     http2_frame_settings frame;
+    uint8_t uflags = static_cast<uint8_t>(flags);
     if (flags & static_cast<uint8_t>(Http2FrameFlag::Ack)) {
-        http2_frame_header_init(&frame.hdr, 0, static_cast<uint8_t>(Http2FrameType::Settings), flags, 0);
+        http2_frame_header_init(&frame.hdr, 0, static_cast<uint8_t>(Http2FrameType::Settings), uflags, 0);
         return frame;
     }
     size_t length = 6 * settings->size();
-    http2_frame_header_init(&frame.hdr, length, static_cast<uint8_t>(Http2FrameType::Settings), flags, 0);
+    http2_frame_header_init(&frame.hdr, length, static_cast<uint8_t>(Http2FrameType::Settings), uflags, 0);
     frame.settings = std::move(*settings);
     return frame;
 }
@@ -77,7 +78,7 @@ http2_frame_window_update build_http2_frame_window_update(uint32_t stream_id, ui
 
 http2_frame_data build_http2_frame_data(uint32_t stream_id, int flags, const slice &data) {
     http2_frame_data frame;
-    http2_frame_header_init(&frame.hdr, data.size(), static_cast<uint8_t>(Http2FrameType::Data), flags, stream_id);
+    http2_frame_header_init(&frame.hdr, data.size(), static_cast<uint8_t>(Http2FrameType::Data), static_cast<uint8_t>(flags), stream_id);
     frame.pad_len = 0;
     frame.data = data;
     return frame;
@@ -99,7 +100,7 @@ http2_frame_headers build_http2_frame_headers(uint32_t stream_id, int flags, con
         frame.pspec.exclusive = 0;
         frame.pspec.weight = 0;
     }
-    http2_frame_header_init(&frame.hdr, length, static_cast<uint8_t>(Http2FrameType::Headers), flags, stream_id);
+    http2_frame_header_init(&frame.hdr, length, static_cast<uint8_t>(Http2FrameType::Headers), static_cast<uint8_t>(flags), stream_id);
     frame.header_block_fragment = header_block;
     frame.pad_len = 0;
     return frame;
@@ -107,7 +108,7 @@ http2_frame_headers build_http2_frame_headers(uint32_t stream_id, int flags, con
 
 http2_frame_push_promise build_http2_frame_push_promise(uint32_t associated_stream_id, uint32_t promised_stream_id, int flags, const slice &header_block) {
     http2_frame_push_promise frame;
-    http2_frame_header_init(&frame.hdr, 4 + header_block.size(), static_cast<uint8_t>(Http2FrameType::PushPromise), flags, associated_stream_id);
+    http2_frame_header_init(&frame.hdr, 4 + header_block.size(), static_cast<uint8_t>(Http2FrameType::PushPromise), static_cast<uint8_t>(flags), associated_stream_id);
     frame.pad_len = 0;
     frame.reserved = 0;
     frame.promised_stream_id = promised_stream_id;
@@ -117,14 +118,14 @@ http2_frame_push_promise build_http2_frame_push_promise(uint32_t associated_stre
 
 http2_frame_rst_stream build_http2_frame_rst_stream(uint32_t stream_id, int flags, uint32_t error_code) {
     http2_frame_rst_stream frame;
-    http2_frame_header_init(&frame.hdr, 4, static_cast<uint8_t>(Http2FrameType::RstStream), flags, stream_id);
+    http2_frame_header_init(&frame.hdr, 4, static_cast<uint8_t>(Http2FrameType::RstStream), static_cast<uint8_t>(flags), stream_id);
     frame.error_code = error_code;
     return frame;
 }
 
 http2_frame_priority build_http2_frame_priority(uint32_t stream_id, int flags, const http2_priority_spec &spec) {
     http2_frame_priority frame;
-    http2_frame_header_init(&frame.hdr, 5, static_cast<uint8_t>(Http2FrameType::Priority), flags, stream_id);
+    http2_frame_header_init(&frame.hdr, 5, static_cast<uint8_t>(Http2FrameType::Priority), static_cast<uint8_t>(flags), stream_id);
     frame.pspec = spec;
     return frame;
 }

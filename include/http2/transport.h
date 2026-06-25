@@ -319,7 +319,7 @@ public:
      *  @param stream     The stream that was closed.
      *  @param error_code The RST_STREAM error code, or 0 for normal close.
      */
-    virtual void OnStreamClosed(std::shared_ptr<Stream> stream, uint32_t error_code) {}
+    virtual void OnStreamClosed(std::shared_ptr<Stream> /*stream*/, uint32_t /*error_code*/) {}
 
     /** @brief Called when a SETTINGS frame (or SETTINGS ACK) is received.
      *
@@ -330,16 +330,16 @@ public:
      *  @param settings  Vector of (setting_id, value) pairs.
      *  @param ack       true if this is a SETTINGS acknowledgment.
      */
-    virtual void OnSettings(uint64_t cid,
-                            const std::vector<std::pair<uint16_t, uint32_t>> &settings,
-                            bool ack) {}
+    virtual void OnSettings(uint64_t /*cid*/,
+                            const std::vector<std::pair<uint16_t, uint32_t>> & /*settings*/,
+                            bool /*ack*/) {}
 
     /** @brief Called when a PING frame is received.
      *  @param cid  Connection identifier.
      *  @param data The 8-byte opaque data from the PING frame.
      *  @param ack  true if this is a PING acknowledgment (ACK flag set).
      */
-    virtual void OnPing(uint64_t cid, uint64_t data, bool ack) {}
+    virtual void OnPing(uint64_t /*cid*/, uint64_t /*data*/, bool /*ack*/) {}
 
     /** @brief Called when a GOAWAY frame is received.
      *
@@ -351,8 +351,8 @@ public:
      *  @param error_code      The error code indicating the reason for shutdown.
      *  @param debug           Optional human-readable debug information.
      */
-    virtual void OnGoAway(uint64_t cid, uint32_t last_stream_id, uint32_t error_code,
-                          const std::string &debug) {}
+    virtual void OnGoAway(uint64_t /*cid*/, uint32_t /*last_stream_id*/, uint32_t /*error_code*/,
+                          const std::string & /*debug*/) {}
 
     /** @brief Called when all in-flight streams have closed during a Drain operation.
      *
@@ -360,7 +360,7 @@ public:
      *
      *  @param cid  Connection identifier.
      */
-    virtual void OnShutdownComplete(uint64_t cid) {}
+    virtual void OnShutdownComplete(uint64_t /*cid*/) {}
 
     /** @brief Called when an async SendRawData operation completes.
      *
@@ -370,7 +370,7 @@ public:
      *  @param cid     Connection identifier.
      *  @param success true if the data was successfully sent, false on error.
      */
-    virtual void OnSendComplete(uint64_t cid, bool success) {}
+    virtual void OnSendComplete(uint64_t /*cid*/, bool /*success*/) {}
 };
 
 // ============================================================================
@@ -402,7 +402,7 @@ public:
      *  @param recv_bytes Number of bytes received.
      *  @return WindowUpdate with increments. Return {recv_bytes, recv_bytes} for automatic.
      */
-    virtual WindowUpdate OnDataReceived(uint64_t cid, uint32_t stream_id, uint32_t recv_bytes) {
+    virtual WindowUpdate OnDataReceived(uint64_t /*cid*/, uint32_t /*stream_id*/, uint32_t recv_bytes) {
         return {recv_bytes, recv_bytes};
     }
 
@@ -412,7 +412,7 @@ public:
      *  @param stream_id         Stream identifier (0 for connection-level).
      *  @param window_update_size Increment in bytes.
      */
-    virtual void OnWindowUpdate(uint64_t cid, uint32_t stream_id, uint32_t window_update_size) {}
+    virtual void OnWindowUpdate(uint64_t /*cid*/, uint32_t /*stream_id*/, uint32_t /*window_update_size*/) {}
 
     /** @brief Called before sending data to check the send window.
      *  Default: allows the send (returns {send_bytes, send_bytes}).
@@ -421,7 +421,7 @@ public:
      *  @param send_bytes Bytes about to be sent.
      *  @return WindowUpdate with increments. Return {send_bytes, send_bytes} to allow.
      */
-    virtual WindowUpdate OnPreSendData(uint64_t cid, uint32_t stream_id, uint32_t send_bytes) {
+    virtual WindowUpdate OnPreSendData(uint64_t /*cid*/, uint32_t /*stream_id*/, uint32_t send_bytes) {
         return {send_bytes, send_bytes};
     }
 };

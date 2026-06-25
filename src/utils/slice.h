@@ -1,6 +1,6 @@
 /**
  * @file slice.h
- * @brief Zero-copy byte buffer with small-buffer optimization and reference counting.
+ * @brief Zero-copy byte buffer with reference counting.
  */
 
 #pragma once
@@ -13,11 +13,11 @@
 class slice_refcount;
 
 /**
- * @brief A reference-counted byte buffer with inline storage optimization.
+ * @brief A reference-counted byte buffer.
  *
- * Small buffers (<= 23 bytes) are stored inline without heap allocation.
- * Larger buffers use a reference-counted heap allocation with a shared
- * control block (slice_refcount) placed immediately before the data.
+ * Heap-allocated buffers use a slice_refcount control block placed immediately
+ * before the data. Copies are cheap (atomic refcount increment). Non-owning
+ * views over external memory are supported via MakeStaticSlice().
  */
 class slice final {
 public:
@@ -93,10 +93,19 @@ public:
     size_t size() const;
 
     /**
-     * @brief Returns a pointer to the underlying byte data.
+     * @brief Returns a const pointer to the underlying byte data.
      * @return Const pointer to the byte array.
      */
     const uint8_t *data() const;
+
+    /**
+     * @brief Returns a mutable pointer to the underlying byte data.
+     *
+     * Only valid for slices created via MakeSliceByLength(). Using this on
+     * a static or copied slice is undefined behavior.
+     * @return Mutable pointer to the byte array.
+     */
+    uint8_t *mutable_data();
 
     /**
      * @brief Removes the last N bytes from the slice.
@@ -159,19 +168,9 @@ public:
     slice &operator+=(const slice &s);
 
 private:
-    enum { SLICE_INLINED_SIZE = 23 };
-
     slice_refcount *_refs;
-    union slice_data {
-        struct {
-            size_t length;
-            uint8_t *bytes;
-        } refcounted;
-        struct {
-            uint8_t length;
-            uint8_t bytes[23];
-        } inlined;
-    } _data;
+    size_t _length;
+    uint8_t *_bytes;
 
     friend slice MakeStaticSlice(const void *ptr, size_t len);
     friend slice MakeSliceByLength(size_t len);

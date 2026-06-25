@@ -297,7 +297,7 @@ TEST(RoundTrip, SettingsFrame) {
     original.settings.push_back(e1);
     original.settings.push_back(e2);
     original.settings.push_back(e3);
-    original.hdr.length = 6 * original.settings.size();
+    original.hdr.length = static_cast<uint32_t>(6 * original.settings.size());
 
     // Pack
     slice packed = pack_http2_frame_settings(&original);
