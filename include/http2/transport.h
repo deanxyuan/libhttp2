@@ -12,6 +12,12 @@
  *    - SendService  -- output bridge to your TCP layer
  */
 #pragma once
+
+/** @brief LibHttp2 version information (matches CMake project version). */
+#define HTTP2_VERSION_MAJOR 1
+#define HTTP2_VERSION_MINOR 0
+#define HTTP2_VERSION_PATCH 0
+
 #include <cstdint>
 #include <memory>
 #include <string>

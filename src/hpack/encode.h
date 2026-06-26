@@ -1,3 +1,4 @@
+#pragma once
 /**
  * @file encode.h
  * @brief HPACK encoding functions for header representations (RFC 7541 Section 6).

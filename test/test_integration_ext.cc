@@ -1,9 +1,9 @@
 /**
- * @file integration_ext_test.cc
+ * @file test_integration_ext.cc
  * @brief Extended integration tests for http2::Transport API.
  *
  * Tests buffered mode, ping, settings exchange, and multiple streams
- * using the same LoopbackSendService pattern as integration_test.cc.
+ * using the same LoopbackSendService pattern as test_integration.cc.
  */
 
 #include "http2/transport.h"

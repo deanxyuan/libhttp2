@@ -550,9 +550,10 @@ int http2_connection::package_process(const uint8_t *package, uint32_t package_l
             return -1;
         }
     }
-    //
-    // TODO: when _sent_goaway = true
-    //
+    // RFC 7540 Section 6.8: silently ignore frames for streams above last_stream_id
+    if (_sent_goaway && hdr.stream_id > _sent_goaway_stream_id) {
+        return static_cast<int>(hdr.length + HTTP2_FRAME_HEADER_SIZE);
+    }
 
     // Only track remote-initiated stream IDs
     if (hdr.stream_id > 0) {
@@ -621,18 +622,6 @@ void http2_connection::received_headers(std::shared_ptr<http2_stream> &stream,
         return;
     }
 
-    if (_client_side) {
-        if (frame->hdr.stream_id & 1) {
-            send_goaway(static_cast<uint32_t>(Http2ErrorCode::ProtocolError));
-            return;
-        }
-    } else {
-        if (!(frame->hdr.stream_id & 1)) {
-            send_goaway(static_cast<uint32_t>(Http2ErrorCode::ProtocolError));
-            return;
-        }
-    }
-
     slice headers = frame->header_block_fragment;
     std::vector<hpack::mdelem_data> decoded_headers;
     int err =
@@ -643,6 +632,21 @@ void http2_connection::received_headers(std::shared_ptr<http2_stream> &stream,
     }
 
     if (!stream) {
+        // Stream ID parity check: only for new (remotely-initiated) streams.
+        // Client-initiated streams are odd, server-initiated are even.
+        // Responses on existing streams skip this check.
+        if (_client_side) {
+            if (frame->hdr.stream_id & 1) {
+                send_goaway(static_cast<uint32_t>(Http2ErrorCode::ProtocolError));
+                return;
+            }
+        } else {
+            if (!(frame->hdr.stream_id & 1)) {
+                send_goaway(static_cast<uint32_t>(Http2ErrorCode::ProtocolError));
+                return;
+            }
+        }
+
         // RFC 7540 Section6.8: do not process streams above GOAWAY last_stream_id
         if (_sent_goaway && frame->hdr.stream_id > _sent_goaway_stream_id) {
             return;
@@ -651,8 +655,8 @@ void http2_connection::received_headers(std::shared_ptr<http2_stream> &stream,
         _streams[frame->hdr.stream_id] = stream;
     }
 
-    stream->save_frame_info(&frame->hdr);
     stream->recv_headers(decoded_headers);
+    stream->save_frame_info(&frame->hdr);
 
     if (frame->hdr.flags & static_cast<uint8_t>(Http2FrameFlag::EndHeaders)) {
         _next_frame_limit = false;

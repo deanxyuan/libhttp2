@@ -30,3 +30,9 @@
 *.exe
 *.out
 *.app
+
+# Build output
+build/
+
+# IDE settings
+.vscode/

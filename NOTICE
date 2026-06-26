@@ -4,6 +4,28 @@ The following files contain code derived from gRPC:
 - src/utils/mpscq.h/cc (lock-free MPSC queue)
 - src/utils/atomic.h (atomic operations)
 - src/utils/slice.h/cc (zero-copy buffer management)
+- src/utils/murmur_hash.h/cc (MurmurHash3 hash function)
 
-Copyright 2016 gRPC Authors
+Copyright 2015-2017 gRPC Authors
 Licensed under the Apache License, Version 2.0
+
+---
+
+This project includes code derived from nghttp2 (https://github.com/nghttp2/nghttp2).
+
+The following files contain code derived from nghttp2:
+- src/hpack/huffman.h/cc (Huffman coding)
+- src/hpack/huffman_data.cc (Huffman code tables)
+
+Copyright 2013 Tatsuhiro Tsujikawa
+Licensed under the MIT License
+
+---
+
+This project includes code derived from LevelDB (https://github.com/google/leveldb).
+
+The following files contain code derived from LevelDB:
+- src/utils/testutil.h/cc (lightweight test framework)
+
+Copyright 2011 The LevelDB Authors
+Licensed under the BSD 3-Clause License

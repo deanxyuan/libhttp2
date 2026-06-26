@@ -152,7 +152,6 @@ static uint32_t prepare_space_for_new_elem(compressor *c, size_t elem_size) {
     uint32_t new_index = c->tail_remote_index + c->table_elems + 1;
     assert(elem_size < 65536);
 
-    // TODO(arjunroy): Re-examine semantics
     if (elem_size > c->max_table_size) {
         while (c->table_size > 0) {
             evict_entry(c);

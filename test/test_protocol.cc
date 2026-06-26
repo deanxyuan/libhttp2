@@ -1,5 +1,5 @@
 /**
- * @file protocol_test.cc
+ * @file test_protocol.cc
  * @brief Protocol compliance and error handling integration tests.
  *
  * Covers:

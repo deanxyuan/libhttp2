@@ -386,13 +386,9 @@ Individual test executables:
 
 The `test/pcap/` directory contains gRPC packet captures used for integration-level testing of frame parsing.
 
-## Planned
+## Graceful Shutdown (Drain)
 
-The following features are planned for future releases:
-
-### Graceful Shutdown (Drain)
-
-Currently `Shutdown()` sends a GOAWAY frame immediately and stops. A planned two-phase graceful shutdown will allow in-flight streams to complete before the connection is fully closed:
+LibHttp2 supports two-phase graceful shutdown. `Drain()` sends a GOAWAY frame, stops accepting new streams, and continues processing in-flight streams until they complete:
 
 ```cpp
 // Phase 1: send GOAWAY, stop accepting new streams, continue processing existing ones
@@ -422,5 +418,14 @@ This project includes utility code derived from [gRPC](https://github.com/grpc/g
 - `src/utils/mpscq.cc` / `mpscq.h` -- Multi-producer single-consumer queue (Copyright 2016 gRPC authors)
 - `src/utils/atomic.h` -- Atomic wrapper with memory order abstraction (Copyright 2017 gRPC authors)
 - `src/utils/slice.cc` / `slice.h` -- Zero-copy reference-counted buffer (derived from gRPC slice)
+- `src/utils/murmur_hash.cc` / `murmur_hash.h` -- MurmurHash3 hash function (Copyright 2015 gRPC authors)
 
 These files are used under the Apache License 2.0. See the copyright headers in each file for details.
+
+This project also includes code derived from [nghttp2](https://github.com/nghttp2/nghttp2):
+
+- `src/hpack/huffman.cc` / `huffman.h` / `huffman_data.cc` -- Huffman coding for HPACK (Copyright 2013 Tatsuhiro Tsujikawa, MIT License)
+
+And from [LevelDB](https://github.com/google/leveldb):
+
+- `src/utils/testutil.cc` / `testutil.h` -- Lightweight test framework (Copyright 2011 The LevelDB Authors, BSD 3-Clause License)

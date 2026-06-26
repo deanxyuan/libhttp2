@@ -36,6 +36,7 @@ elseif(UNIX)
 endif()
 
 option(LIBHTTP2_BUILD_TESTS "Build tests" ON)
+option(BUILD_EXAMPLES "Build examples" OFF)
 
 option(BUILD_SHARED_LIBS "Build as shared library" OFF)
 
@@ -52,7 +53,11 @@ option(LIBHTTP2_ENABLE_TSAN "Enable ThreadSanitizer" OFF)
 
 add_library(http2 "")
 
-set_target_properties(http2 PROPERTIES POSITION_INDEPENDENT_CODE ON)
+set_target_properties(http2 PROPERTIES
+    POSITION_INDEPENDENT_CODE ON
+    VERSION ${PACKAGE_VERSION}
+    SOVERSION 1
+)
 
 target_compile_options(http2 PRIVATE
     $<$<CXX_COMPILER_ID:MSVC>:/W4>
@@ -62,33 +67,11 @@ target_compile_definitions(http2 PRIVATE
     $<$<CXX_COMPILER_ID:MSVC>:WIN32_LEAN_AND_MEAN UNICODE _UNICODE _CRT_SECURE_NO_WARNINGS>
 )
 
-set(HPACK_SOURCES
-    "${PROJECT_SOURCE_DIR}/src/hpack/decode.cc"
-    "${PROJECT_SOURCE_DIR}/src/hpack/dynamic_metadata.cc"
-    "${PROJECT_SOURCE_DIR}/src/hpack/encode.cc"
-    "${PROJECT_SOURCE_DIR}/src/hpack/hpack.cc"
-    "${PROJECT_SOURCE_DIR}/src/hpack/huffman_data.cc"
-    "${PROJECT_SOURCE_DIR}/src/hpack/huffman.cc"
-    "${PROJECT_SOURCE_DIR}/src/hpack/send_record.cc"
-    "${PROJECT_SOURCE_DIR}/src/hpack/static_metadata.cc"
-)
-
-set(HTTP2_SOURCES
-    "${PROJECT_SOURCE_DIR}/src/http2/connection.cc"
-    "${PROJECT_SOURCE_DIR}/src/http2/frame.cc"
-    "${PROJECT_SOURCE_DIR}/src/http2/pack.cc"
-    "${PROJECT_SOURCE_DIR}/src/http2/parser.cc"
-    "${PROJECT_SOURCE_DIR}/src/http2/settings.cc"
-    "${PROJECT_SOURCE_DIR}/src/http2/stream.cc"
-)
-
-set(UTILS_SOURCES
-    "${PROJECT_SOURCE_DIR}/src/utils/byte_order.cc"
-    "${PROJECT_SOURCE_DIR}/src/utils/mpscq.cc"
-    "${PROJECT_SOURCE_DIR}/src/utils/murmur_hash.cc"
-    "${PROJECT_SOURCE_DIR}/src/utils/slice_buffer.cc"
-    "${PROJECT_SOURCE_DIR}/src/utils/slice.cc"
-)
+aux_source_directory("${PROJECT_SOURCE_DIR}/src/hpack"  HPACK_SOURCES)
+aux_source_directory("${PROJECT_SOURCE_DIR}/src/http2"  HTTP2_SOURCES)
+aux_source_directory("${PROJECT_SOURCE_DIR}/src/utils"  UTILS_SOURCES)
+# testutil is linked into test targets only, not the library itself
+list(FILTER UTILS_SOURCES EXCLUDE REGEX "testutil\\.cc$")
 
 target_sources(http2
     PRIVATE
@@ -126,11 +109,38 @@ if(LIBHTTP2_ENABLE_TSAN)
     target_link_options(http2 PUBLIC $<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-fsanitize=thread>)
 endif()
 
-install(TARGETS http2
-    ARCHIVE DESTINATION lib
-    LIBRARY DESTINATION lib
+include(GNUInstallDirs)
+include(CMakePackageConfigHelpers)
+
+install(TARGETS http2 EXPORT http2Targets
+    ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
 )
-install(DIRECTORY include/http2 DESTINATION include)
+install(DIRECTORY include/http2 DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
+
+install(EXPORT http2Targets
+    FILE libhttp2Targets.cmake
+    NAMESPACE libhttp2::
+    DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/libhttp2
+)
+
+configure_package_config_file(
+    "${CMAKE_CURRENT_SOURCE_DIR}/cmake/libhttp2Config.cmake.in"
+    "${CMAKE_CURRENT_BINARY_DIR}/libhttp2Config.cmake"
+    INSTALL_DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/libhttp2
+)
+
+write_basic_package_version_file(
+    "${CMAKE_CURRENT_BINARY_DIR}/libhttp2ConfigVersion.cmake"
+    VERSION ${PACKAGE_VERSION}
+    COMPATIBILITY SameMajorVersion
+)
+
+install(FILES
+    "${CMAKE_CURRENT_BINARY_DIR}/libhttp2Config.cmake"
+    "${CMAKE_CURRENT_BINARY_DIR}/libhttp2ConfigVersion.cmake"
+    DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/libhttp2
+)
 
 if (LIBHTTP2_BUILD_TESTS)
     enable_testing()
@@ -162,18 +172,23 @@ if (LIBHTTP2_BUILD_TESTS)
         add_test(NAME "${test_target_name}" COMMAND "${test_target_name}")
     endfunction()
 
-    libhttp2_test("${PROJECT_SOURCE_DIR}/test/byte_order_test.cc")
-    libhttp2_test("${PROJECT_SOURCE_DIR}/test/dynamic_table_test.cc")
-    libhttp2_test("${PROJECT_SOURCE_DIR}/test/hpack_test.cc")
-    libhttp2_test("${PROJECT_SOURCE_DIR}/test/huffman_test.cc")
-    libhttp2_test("${PROJECT_SOURCE_DIR}/test/hpack_primitive_test.cc")
-    libhttp2_test("${PROJECT_SOURCE_DIR}/test/integration_test.cc")
-    libhttp2_test("${PROJECT_SOURCE_DIR}/test/integration_ext_test.cc")
-    libhttp2_test("${PROJECT_SOURCE_DIR}/test/pack_test.cc")
-    libhttp2_test("${PROJECT_SOURCE_DIR}/test/parse_test.cc")
-    libhttp2_test("${PROJECT_SOURCE_DIR}/test/protocol_test.cc")
-    libhttp2_test("${PROJECT_SOURCE_DIR}/test/slice_test.cc")
-    libhttp2_test("${PROJECT_SOURCE_DIR}/test/static_table_test.cc")
-    libhttp2_test("${PROJECT_SOURCE_DIR}/test/util_test.cc")
+    file(GLOB LIBHTTP2_TEST_SOURCES "${PROJECT_SOURCE_DIR}/test/test_*.cc")
+    foreach(test_file ${LIBHTTP2_TEST_SOURCES})
+        libhttp2_test("${test_file}")
+    endforeach()
 
+endif()
+
+if(BUILD_EXAMPLES)
+    function(libhttp2_example example_file)
+        get_filename_component(example_target "${example_file}" NAME_WE)
+        add_executable("${example_target}" "${example_file}")
+        target_link_libraries("${example_target}" http2)
+        target_include_directories("${example_target}" PRIVATE "${PROJECT_SOURCE_DIR}")
+    endfunction()
+
+    file(GLOB LIBHTTP2_EXAMPLE_SOURCES "${PROJECT_SOURCE_DIR}/examples/*.cc")
+    foreach(example_file ${LIBHTTP2_EXAMPLE_SOURCES})
+        libhttp2_example("${example_file}")
+    endforeach()
 endif()

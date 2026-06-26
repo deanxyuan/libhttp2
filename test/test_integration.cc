@@ -1,5 +1,5 @@
 /**
- * @file integration_test.cc
+ * @file test_integration.cc
  * @brief Integration test for the public http2::Transport API.
  *
  *  Tests a full client->server round-trip using the new Stream-centric interface:
