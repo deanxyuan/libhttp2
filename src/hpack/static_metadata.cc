@@ -119,7 +119,7 @@ uint32_t static_metadata::index() const {
 
 struct static_metadata_context {
 
-    static_metadata static_mdelem_table[HPACK_STATIC_MDELEM_COUNT + 1] = {
+    static_metadata static_mdelem_table[HPACK_STATIC_MDELEM_STANDARD_COUNT + 1] = {
         static_metadata(MakeStaticSlice(nullptr), MakeStaticSlice(nullptr), 0),
         static_metadata(MakeStaticSlice(":authority"), MakeStaticSlice(nullptr), 1),
         static_metadata(MakeStaticSlice(":method"), MakeStaticSlice("GET"), 2),
@@ -182,34 +182,6 @@ struct static_metadata_context {
         static_metadata(MakeStaticSlice("vary"), MakeStaticSlice(nullptr), 59),
         static_metadata(MakeStaticSlice("via"), MakeStaticSlice(nullptr), 60),
         static_metadata(MakeStaticSlice("www-authenticate"), MakeStaticSlice(nullptr), 61),
-
-        //
-        // The following data (62-85) are from gRPC
-        //
-        static_metadata(MakeStaticSlice("grpc-status"), MakeStaticSlice("0"), 62),
-        static_metadata(MakeStaticSlice("grpc-status"), MakeStaticSlice("1"), 63),
-        static_metadata(MakeStaticSlice("grpc-status"), MakeStaticSlice("2"), 64),
-        static_metadata(MakeStaticSlice("grpc-encoding"), MakeStaticSlice("identity"), 65),
-        static_metadata(MakeStaticSlice("grpc-encoding"), MakeStaticSlice("gzip"), 66),
-        static_metadata(MakeStaticSlice("grpc-encoding"), MakeStaticSlice("deflate"), 67),
-        static_metadata(MakeStaticSlice("te"), MakeStaticSlice("trailers"), 68),
-        static_metadata(MakeStaticSlice("content-type"), MakeStaticSlice("application/grpc"), 69),
-        static_metadata(MakeStaticSlice(":scheme"), MakeStaticSlice("grpc"), 70),
-        static_metadata(MakeStaticSlice(":method"), MakeStaticSlice("PUT"), 71),
-        static_metadata(MakeStaticSlice("accept-encoding"), MakeStaticSlice(nullptr), 72),
-        static_metadata(MakeStaticSlice("content-encoding"), MakeStaticSlice("identity"), 73),
-        static_metadata(MakeStaticSlice("content-encoding"), MakeStaticSlice("gzip"), 74),
-        static_metadata(MakeStaticSlice("lb-cost-bin"), MakeStaticSlice(nullptr), 75),
-        static_metadata(MakeStaticSlice("grpc-accept-encoding"), MakeStaticSlice("identity"), 76),
-        static_metadata(MakeStaticSlice("grpc-accept-encoding"), MakeStaticSlice("deflate"), 77),
-        static_metadata(MakeStaticSlice("grpc-accept-encoding"), MakeStaticSlice("identity,deflate"), 78),
-        static_metadata(MakeStaticSlice("grpc-accept-encoding"), MakeStaticSlice("gzip"), 79),
-        static_metadata(MakeStaticSlice("grpc-accept-encoding"), MakeStaticSlice("identity,gzip"), 80),
-        static_metadata(MakeStaticSlice("grpc-accept-encoding"), MakeStaticSlice("deflate,gzip"), 81),
-        static_metadata(MakeStaticSlice("grpc-accept-encoding"), MakeStaticSlice("identity,deflate,gzip"), 82),
-        static_metadata(MakeStaticSlice("accept-encoding"), MakeStaticSlice("identity"), 83),
-        static_metadata(MakeStaticSlice("accept-encoding"), MakeStaticSlice("gzip"), 84),
-        static_metadata(MakeStaticSlice("accept-encoding"), MakeStaticSlice("identity,gzip"), 85),
     };
 };  // struct static_metadata_context
 

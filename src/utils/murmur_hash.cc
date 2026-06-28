@@ -25,14 +25,15 @@
 
 #include <string.h>
 
-#define ROTL32(x, r) ((x) << (r)) | ((x) >> (32 - (r)))
+#define ROTL32(x, r) ((((x) << (r)) | ((x) >> (32 - (r)))))
 
-#define FMIX32(h)                                                                                                      \
-    (h) ^= (h) >> 16;                                                                                                  \
-    (h) *= 0x85ebca6b;                                                                                                 \
-    (h) ^= (h) >> 13;                                                                                                  \
-    (h) *= 0xc2b2ae35;                                                                                                 \
-    (h) ^= (h) >> 16;
+#define FMIX32(h) do {                                                                                   \
+    (h) ^= (h) >> 16;                                                                                    \
+    (h) *= 0x85ebca6b;                                                                                   \
+    (h) ^= (h) >> 13;                                                                                    \
+    (h) *= 0xc2b2ae35;                                                                                   \
+    (h) ^= (h) >> 16;                                                                                    \
+} while (0)
 
 uint32_t murmur_hash3(const void *key, size_t len, uint32_t seed) {
     uint32_t h1 = seed;

@@ -51,8 +51,8 @@ void slice_buffer::add_slice(const slice &s) {
 
 void slice_buffer::add_slice(slice &&s) {
     if (!s.empty()) {
-        _vs.emplace_back(s);
         _length += s.size();
+        _vs.emplace_back(std::move(s));
     }
 }
 

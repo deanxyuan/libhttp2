@@ -86,6 +86,10 @@ int parse_http2_frame_headers(http2_frame_hdr *hdr, const uint8_t *input, http2_
     uint8_t exclusive = 0;
     uint16_t weight = 0;
 
+    if (payload_length < 5) {
+        return static_cast<int>(Http2ErrorCode::FrameSizeError);
+    }
+
     if (frame->hdr.flags & static_cast<uint8_t>(Http2FrameFlag::Priority)) {
         dep_stream_id = get_uint32_from_be_stream(payload) & HTTP2_STREAM_ID_MASK;
         exclusive = (payload[0] & 0x80) != 0;
@@ -198,6 +202,10 @@ int parse_http2_frame_push_promise(http2_frame_hdr *hdr, const uint8_t *input, h
     } else {
         payload = input;
         payload_size = hdr->length;
+    }
+
+    if (payload_size < 4) {
+        return static_cast<int>(Http2ErrorCode::FrameSizeError);
     }
 
     frame->promised_stream_id = get_uint32_from_be_stream(payload) & HTTP2_STREAM_ID_MASK;

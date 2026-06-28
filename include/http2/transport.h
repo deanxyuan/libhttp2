@@ -483,7 +483,7 @@ struct ConnectionInfo {
     bool received_goaway;              /**< Whether GOAWAY has been received. */
     bool sent_goaway;                  /**< Whether GOAWAY has been sent. */
     bool draining;                     /**< Whether the connection is in drain phase. */
-    int32_t connection_window;         /**< Current connection-level send window. */
+    int64_t connection_window;         /**< Current connection-level send window. */
 };
 
 // ============================================================================

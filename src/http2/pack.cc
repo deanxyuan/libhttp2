@@ -13,14 +13,25 @@ slice_buffer pack_http2_frame_data(http2_frame_data *frame, uint32_t max_frame_s
     http2_frame_hdr hdr = frame->hdr;
     hdr.flags &= ~static_cast<uint8_t>(Http2FrameFlag::Padded);
     uint8_t end_stream_flag = hdr.flags & static_cast<uint8_t>(Http2FrameFlag::EndStream);
-    uint32_t readed_length = 0;
+    uint32_t read_length = 0;
 
     slice_buffer buffer;
-    while (readed_length < frame->data.size()) {
 
-        uint32_t remain_bytes = static_cast<uint32_t>(frame->data.size()) - readed_length;
+    // Handle empty DATA frame (valid with END_STREAM for trailers-only responses).
+    if (frame->data.size() == 0) {
+        hdr.length = 0;
+        hdr.flags |= end_stream_flag;
+        slice data = MakeSliceByLength(HTTP2_FRAME_HEADER_SIZE);
+        http2_frame_header_pack(data.mutable_data(), &hdr);
+        buffer.add_slice(data);
+        return buffer;
+    }
+
+    while (read_length < frame->data.size()) {
+
+        uint32_t remain_bytes = static_cast<uint32_t>(frame->data.size()) - read_length;
         hdr.length = (remain_bytes < max_frame_size) ? remain_bytes : max_frame_size;
-        bool is_last = (readed_length + hdr.length >= frame->data.size());
+        bool is_last = (read_length + hdr.length >= frame->data.size());
 
         // Only set END_STREAM on the last chunk
         if (is_last) {
@@ -35,8 +46,8 @@ slice_buffer pack_http2_frame_data(http2_frame_data *frame, uint32_t max_frame_s
         http2_frame_header_pack(ptr, &hdr);
         ptr += HTTP2_FRAME_HEADER_SIZE;
 
-        memcpy(ptr, frame->data.data() + readed_length, hdr.length);
-        readed_length += hdr.length;
+        memcpy(ptr, frame->data.data() + read_length, hdr.length);
+        read_length += hdr.length;
 
         buffer.add_slice(data);
     }

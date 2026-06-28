@@ -260,12 +260,14 @@ private:
     /** @brief Remove a stream from the connection's stream map. */
     void destroy_stream(uint32_t stream_id);
 
-    /** @brief HPACK-encode headers and send them in a HEADERS frame. */
-    void send_binary_in_headers_frame(std::shared_ptr<http2_stream> &stream,
+    /** @brief HPACK-encode headers and send them in a HEADERS frame.
+     *  @return Bytes sent, or -1 on error. */
+    int send_binary_in_headers_frame(std::shared_ptr<http2_stream> &stream,
                                       const std::vector<std::pair<std::string, std::string>> &headers, int flags);
 
-    /** @brief Send binary data blocks in one or more DATA frames with flow control. */
-    void send_binary_in_data_frame(std::shared_ptr<http2_stream> &stream, const uint8_t *data,
+    /** @brief Send binary data blocks in one or more DATA frames with flow control.
+     *  @return Bytes sent, or -1 on error. 0 if deferred or empty (no send). */
+    int send_binary_in_data_frame(std::shared_ptr<http2_stream> &stream, const uint8_t *data,
                                    uint32_t size, bool end_of_stream);
 
     /** @brief Notify the event handler that a stream has been closed. */
@@ -319,7 +321,7 @@ private:
     bool _buffered_mode;
     bool _init_ok;
     slice_buffer _send_buffer;
-    int32_t _connection_send_window;
+    int64_t _connection_send_window;
 
 #ifndef NDEBUG
     std::thread::id _thread_id;

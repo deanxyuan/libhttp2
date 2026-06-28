@@ -4,6 +4,7 @@
  */
 
 #include "src/hpack/decode.h"
+#include <cstdint>
 #include <memory>
 #include "src/hpack/huffman.h"
 #include "src/utils/useful.h"
@@ -20,7 +21,16 @@ const uint8_t *decode_uint32(const uint8_t *src, const uint8_t *src_end, uint32_
                 return nullptr;
             }
 
-            dst += (static_cast<uint32_t>(*src & 0x7f)) << M;
+            // Reject overflow: RFC 7541 §5.1 limits the integer to N + 7*k bits.
+            // For a uint32_t target, M must be < 32 and the addition must not wrap.
+            if (M >= 32) {
+                return nullptr;
+            }
+            uint32_t addend = (static_cast<uint32_t>(*src & 0x7f)) << M;
+            if (dst > UINT32_MAX - addend) {
+                return nullptr;
+            }
+            dst += addend;
             M += 7;
         } while (*src & 0x80);
     }
@@ -41,7 +51,11 @@ const uint8_t *decode_string(const uint8_t *src, size_t src_len, std::string &va
     http2_hd_huff_decode_context ctx;
     http2_head_huffman_decode_context_init(&ctx);
 
-    value.resize(len * 3);
+    size_t alloc_size = static_cast<size_t>(len) * 3;
+    if (alloc_size / 3 != static_cast<size_t>(len)) {
+        return nullptr;  // overflow
+    }
+    value.resize(alloc_size);
     int32_t ret = http2_head_huffman_decode(&ctx, (uint8_t *)(value.data()), value.size(), src, src_len, 1);
     if (ret == -1) {
         return nullptr;
@@ -67,7 +81,8 @@ const uint8_t *parse_string(std::string &dst, const uint8_t *buf, const uint8_t 
             return nullptr;
         }
     } else {
-        if (buf + str_len <= buf_end) {
+        uint32_t remaining = static_cast<uint32_t>(buf_end - buf);
+        if (str_len <= remaining) {
             dst = std::string(reinterpret_cast<const char *>(buf), str_len);
             buf += str_len;
         } else {
@@ -93,7 +108,8 @@ const uint8_t *parse_string_key(std::string &dst, const uint8_t *buf, const uint
             return nullptr;
         }
     } else {
-        if (buf + str_len <= buf_end) {
+        uint32_t remaining = static_cast<uint32_t>(buf_end - buf);
+        if (str_len <= remaining) {
             buf_end = buf + str_len;
 
             while (buf < buf_end) {

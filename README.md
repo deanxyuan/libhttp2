@@ -1,8 +1,8 @@
 # libhttp2
 
-**Version 1.0.0** | C++11 | Apache 2.0
+**Version 1.0.1** | C++11 | Apache 2.0
 
-A lightweight HTTP/2 protocol implementation library written in C++11. Provides HTTP/2 framing, HPACK header compression/decompression, stream management, flow control, and gRPC-compatible metadata support. Designed as a building block for HTTP/2 clients, servers, and gRPC transports.
+A lightweight HTTP/2 protocol implementation library written in C++11. Provides HTTP/2 framing, HPACK header compression/decompression, stream management, flow control, and trailers support. Designed as a building block for HTTP/2 clients, servers, and gRPC transports.
 
 ## Features
 
@@ -10,7 +10,7 @@ A lightweight HTTP/2 protocol implementation library written in C++11. Provides 
 - **HPACK Header Compression** -- Static and dynamic table encoding/decoding, Huffman coding for header values, and configurable dynamic table size.
 - **Stream Management** -- Complete stream state machine (idle, reserved, open, half-closed, closed) with per-stream priority tracking.
 - **Flow Control** -- Connection-level and stream-level window-based flow control with a pluggable `FlowControlHandler` interface. Automatic flow control by default.
-- **gRPC Metadata Support** -- Efficient handling of gRPC-style key-value metadata headers, including trailing headers for grpc-status delivery.
+- **Trailers Support** -- Efficient handling of trailing headers (including grpc-status delivery) via `SendTrailingHeaders()` and `OnStreamHeaders` callback.
 - **Connection Preface** -- Automatic client preface sending and server preface verification.
 - **Zero External Dependencies** -- Self-contained C++11 library; no third-party dependencies required at build time.
 
@@ -188,7 +188,8 @@ Represents an HTTP/2 stream within a connection. Streams can both send outgoing 
 - `StreamId()` -- HTTP/2 stream identifier
 - `Flags()` -- frame flags from the current event (bitmask of `Http2FrameFlag`)
 - `ErrorCode()` -- RST_STREAM error code (0 if no error)
-- `CurrentState()` -- stream state (`Http2StreamState`)
+- `CurrentState()` -- stream state as `int` (see `Http2StreamState` enum)
+- `CurrentStateTyped()` -- stream state as `Http2StreamState` enum value
 
 **Sending:**
 - `SendHeaders(headers, end_stream)` -- send a HEADERS frame
@@ -247,7 +248,8 @@ struct ConnectionInfo {
     uint32_t last_stream_id;    // highest remote stream ID seen
     bool received_goaway;       // whether GOAWAY has been received
     bool sent_goaway;           // whether GOAWAY has been sent
-    int32_t connection_window;  // current connection-level send window
+    bool draining;              // whether the connection is in drain phase
+    int64_t connection_window;  // current connection-level send window
 };
 ```
 
@@ -283,6 +285,7 @@ Core interface for an HTTP/2 connection. Each `Transport` instance manages one T
 **Buffered sending:**
 - `SetBufferedMode(enable)` -- enable/disable send buffering (reduces small TCP writes)
 - `Flush()` -- send all accumulated buffered data
+- `ScopedBufferedMode` -- RAII guard that enables buffered mode for a scope and auto-flushes on destruction
 
 **Lifecycle:**
 - `Shutdown()` -- send GOAWAY and clean up
@@ -374,17 +377,22 @@ Individual test executables:
 
 | Test | Description |
 |------|-------------|
-| `byte_order_test` | Byte order conversion utilities |
-| `dynamic_table_test` | HPACK dynamic table operations |
-| `hpack_test` | HPACK header encoding/decoding |
-| `huffman_test` | HPACK Huffman coding |
-| `integration_test` | End-to-end HTTP/2 frame processing |
-| `pack_test` | HTTP/2 frame packing |
-| `parse_test` | HTTP/2 frame parsing |
-| `slice_test` | Zero-copy slice buffer |
-| `static_table_test` | HPACK static table lookups |
+| `test_byte_order` | Byte order conversion utilities |
+| `test_dynamic_table` | HPACK dynamic table operations |
+| `test_hpack` | HPACK header encoding/decoding round-trip |
+| `test_hpack_primitive` | HPACK wire-format decoding edge cases |
+| `test_huffman` | HPACK Huffman coding |
+| `test_integration` | End-to-end client/server round-trip |
+| `test_integration_ext` | Extended integration (PING, SETTINGS, multi-stream) |
+| `test_multi_stream_crash` | Multi-stream lifecycle regression test |
+| `test_pack` | HTTP/2 frame packing |
+| `test_parse` | HTTP/2 frame parsing |
+| `test_protocol` | Protocol compliance (flow control, GOAWAY, CONTINUATION, drain) |
+| `test_slice` | Zero-copy slice buffer |
+| `test_static_table` | HPACK static table lookups |
+| `test_util` | Utility classes (atomic, MPSC queue, murmur hash) |
 
-The `test/pcap/` directory contains gRPC packet captures used for integration-level testing of frame parsing.
+The `test/pcap/` directory contains gRPC packet captures for reference during manual testing.
 
 ## Graceful Shutdown (Drain)
 

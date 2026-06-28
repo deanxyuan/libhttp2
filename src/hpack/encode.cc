@@ -65,7 +65,9 @@ slice encode_mdelem_data_impl(const mdelem_data &mdel, uint8_t type) {
     buf += key_len_size;
 
     // key
-    memcpy(buf, mdel.key.data(), key_size);
+    if (key_size > 0) {
+        memcpy(buf, mdel.key.data(), key_size);
+    }
     buf += key_size;
 
     // value length
@@ -73,7 +75,9 @@ slice encode_mdelem_data_impl(const mdelem_data &mdel, uint8_t type) {
     buf += value_len_size;
 
     // value
-    memcpy(buf, mdel.value.data(), value_size);
+    if (value_size > 0) {
+        memcpy(buf, mdel.value.data(), value_size);
+    }
     return s;
 }
 
@@ -151,7 +155,9 @@ slice encode_without_indexing(const mdelem_data &mdel, uint32_t key_index) {
     buf += value_len_size;
 
     // value
-    memcpy(buf, mdel.value.data(), value_size);
+    if (value_size > 0) {
+        memcpy(buf, mdel.value.data(), value_size);
+    }
     return s;
 }
 

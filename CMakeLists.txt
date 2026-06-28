@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.10)
-project(libhttp2 VERSION 1.0.0 LANGUAGES CXX)
+project(libhttp2 VERSION 1.0.1 LANGUAGES CXX)
 
 # This project requires C++11.
 set(CMAKE_CXX_STANDARD 11)
@@ -7,7 +7,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
 set(PACKAGE_NAME          "libhttp2")
-set(PACKAGE_VERSION       "1.0.0")
+set(PACKAGE_VERSION       "1.0.1")
 
 if(UNIX)
     if(${CMAKE_SYSTEM_NAME} MATCHES "Linux")

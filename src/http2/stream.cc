@@ -95,7 +95,7 @@ const int event_status_table[8][internal::kDoNotUse] = {
     },
     {
         // Recv PUSH_PROMISE
-        internal::kHalfClosedRemote,  // when kIdle
+        internal::kReservedRemote,    // when kIdle
         internal::kDoNotUse,          // when kReservedLocal
         internal::kDoNotUse,          // when kReservedRemote
         internal::kDoNotUse,          // when kOpen
@@ -384,7 +384,9 @@ uint32_t http2_stream::DataSize() const {
 }
 
 uint32_t http2_stream::ReadData(uint8_t *buffer, uint32_t size) {
-    return static_cast<uint32_t>(_data_cache.copy_to_buffer(buffer, size));
+    uint32_t copied = static_cast<uint32_t>(_data_cache.copy_to_buffer(buffer, size));
+    _data_cache.move_header(copied);
+    return copied;
 }
 
 const uint8_t *http2_stream::PeekData(uint32_t *out_size) const {

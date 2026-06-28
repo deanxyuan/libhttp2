@@ -11,8 +11,7 @@
 
 #include "src/hpack/metadata.h"
 
-#define HPACK_STATIC_MDELEM_COUNT 85           ///< Total entries including gRPC extensions.
-#define HPACK_STATIC_MDELEM_STANDARD_COUNT 61  ///< Standard HPACK static table entries (1-61).
+#define HPACK_STATIC_MDELEM_STANDARD_COUNT 61  ///< Standard HPACK static table entries (RFC 7541 Appendix A, 1-61).
 
 namespace hpack {
 

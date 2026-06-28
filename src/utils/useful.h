@@ -10,7 +10,7 @@
  * @param bits Number of bits to set (must be <= 31).
  * @return An integer with the lowest `bits` bits set to 1.
  */
-#define INT_MASK(bits) ((1 << (bits)) - 1)
+#define INT_MASK(bits) ((1u << (bits)) - 1)
 
 /**
  * @brief Rotates the bits of x left by n positions.
@@ -18,7 +18,7 @@
  * @param n Number of bit positions to rotate left.
  * @return The rotated value.
  */
-#define ROTL(x, n) (((x) << (n)) | ((x) >> (sizeof(x) * 8 - (n))))
+#define ROTL(x, n) ((((x) << (n)) | ((x) >> (sizeof(x) * 8 - (n)))))
 
 /**
  * @brief Rotates the bits of x right by n positions.
@@ -26,4 +26,4 @@
  * @param n Number of bit positions to rotate right.
  * @return The rotated value.
  */
-#define ROTR(x, n) (((x) >> (n)) | ((x) << (sizeof(x) * 8 - (n))))
+#define ROTR(x, n) ((((x) >> (n)) | ((x) << (sizeof(x) * 8 - (n)))))

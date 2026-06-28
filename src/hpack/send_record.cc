@@ -165,7 +165,7 @@ static uint32_t prepare_space_for_new_elem(compressor *c, size_t elem_size) {
     while (c->table_size + elem_size > c->max_table_size) {
         evict_entry(c);
     }
-    assert(c->table_elems < c->max_table_size);
+    assert(c->table_elems < c->max_table_elems);
     c->table_elem_size[new_index % c->cap_table_elems] = static_cast<uint16_t>(elem_size);
     c->table_size = c->table_size + elem_size;
     c->table_elems++;
@@ -258,6 +258,11 @@ int compressor_init(compressor *c) {
     return 0;
 }
 void compressor_destroy(compressor *c) {
+    // Release all slice references in the cuckoo hash table.
+    for (size_t i = 0; i < HPACK_NUM_VALUES; i++) {
+        c->entries[i].mdel.key = slice();
+        c->entries[i].mdel.value = slice();
+    }
     free(c->table_elem_size);
 }
 
@@ -269,7 +274,10 @@ static void rebuild_elems(compressor *c, uint32_t new_cap) {
     uint32_t i;
 
     memset(table_elem_size, 0, sizeof(*table_elem_size) * new_cap);
-    assert(c->table_elems <= new_cap);
+    if (c->table_elems > new_cap) {
+        free(table_elem_size);
+        return;
+    }
 
     for (i = 0; i < c->table_elems; i++) {
         uint32_t ofs = c->tail_remote_index + i + 1;

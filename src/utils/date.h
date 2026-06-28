@@ -14,7 +14,21 @@
 static inline std::string build_date_string() {
     char buf[64] = {0};
     time_t now = time(nullptr);
-    struct tm *gmt = gmtime(&now);
-    strftime(buf, sizeof(buf), "%a, %d %h %G %T GMT", gmt);  // strlen(buf) = 29
+    if (now == static_cast<time_t>(-1)) {
+        return std::string();  // time() failed
+    }
+    struct tm gmt_buf;
+    struct tm *gmt = nullptr;
+#ifdef _WIN32
+    if (gmtime_s(&gmt_buf, &now) == 0) {
+        gmt = &gmt_buf;
+    }
+#else
+    gmt = gmtime_r(&now, &gmt_buf);
+#endif
+    if (!gmt) {
+        return std::string();  // gmtime failed
+    }
+    strftime(buf, sizeof(buf), "%a, %d %h %Y %T GMT", gmt);  // strlen(buf) = 29
     return std::string(buf);
 }

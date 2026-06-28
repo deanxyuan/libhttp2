@@ -46,16 +46,15 @@ int decode_headers(const uint8_t *buf, uint32_t buf_len, dynamic_table_service *
             }
 
             mdelem_data mdel;
-            // Table 1: Static Table Entries (max entries 61)
-            if (int_value > HPACK_STATIC_MDELEM_STANDARD_COUNT) {
+            // Indexed representation: 1-61 = static table, >61 = dynamic table.
+            if (int_value <= HPACK_STATIC_MDELEM_STANDARD_COUNT) {
+                const auto sm = hpack_static_headers[int_value];
+                mdel = sm.data();
+            } else {
                 int_value -= HPACK_STATIC_MDELEM_STANDARD_COUNT + 1;
                 if (!dynamic_table->get_mdelem_data(int_value, &mdel)) {
                     return static_cast<int>(Http2ErrorCode::CompressionError);
                 }
-
-            } else {
-                const auto sm = hpack_static_headers[int_value];
-                mdel = sm.data();
             }
 
             decoded_headers->push_back(mdel);
@@ -120,27 +119,22 @@ int decode_headers(const uint8_t *buf, uint32_t buf_len, dynamic_table_service *
 
             mdelem_data mdel;
 
-            if (int_value > HPACK_STATIC_MDELEM_STANDARD_COUNT) {
-                // if (add_to_dynamic_table) {
-                // 6.2.1 Literal Header Field with Incremental Indexing
-                // Indexed Name
-                int_value -= HPACK_STATIC_MDELEM_STANDARD_COUNT + 1;
-                if (!dynamic_table->get_mdelem_data(int_value, &mdel)) {
-                    return static_cast<int>(Http2ErrorCode::CompressionError);
-                }
-                //} else {
-                // return static_cast<int>(Http2ErrorCode::CompressionError);
-                //}
-            } else if (int_value != 0) {
-                const auto sm = hpack_static_headers[int_value];
-                mdel.key = sm.data().key;
-            } else {
+            // Name reference: 0 = new literal, 1-61 = static table, >61 = dynamic table.
+            if (int_value == 0) {
                 std::string key;
                 buf = parse_string_key(key, buf, buf_end);
                 if (!buf) {
                     return static_cast<int>(Http2ErrorCode::ProtocolError);
                 }
                 mdel.key.assign(key);
+            } else if (int_value <= HPACK_STATIC_MDELEM_STANDARD_COUNT) {
+                const auto sm = hpack_static_headers[int_value];
+                mdel.key = sm.data().key;
+            } else {
+                int_value -= HPACK_STATIC_MDELEM_STANDARD_COUNT + 1;
+                if (!dynamic_table->get_mdelem_data(int_value, &mdel)) {
+                    return static_cast<int>(Http2ErrorCode::CompressionError);
+                }
             }
 
             std::string value;
